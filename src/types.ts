@@ -41,7 +41,6 @@ export interface GlobalOptions {
   readonly yes: boolean;
   readonly dryRun: boolean;
   readonly all: boolean;
-  readonly json: boolean;
   readonly help: boolean;
   readonly version: boolean;
 }

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  buildApiRequestPlan,
   buildRequestPlan,
   executeAllPages,
   executeRequest,
@@ -19,7 +20,6 @@ const options: GlobalOptions = {
   yes: false,
   dryRun: true,
   all: false,
-  json: false,
   help: false,
   version: false,
 };
@@ -71,6 +71,15 @@ describe("HubSpot HTTP requests", () => {
       },
       body: undefined,
     });
+  });
+
+  test("redacts credentials embedded in dry-run URLs", () => {
+    const output = renderDryRun(
+      requestPlan("https://api.hubapi.com/test?hapikey=secret&appId=123"),
+    ) as { url: string };
+
+    expect(new URL(output.url).searchParams.get("hapikey")).toBe("[redacted]");
+    expect(new URL(output.url).searchParams.get("appId")).toBe("123");
   });
 
   test("reports actionable HubSpot API errors", async () => {
@@ -169,6 +178,154 @@ describe("HubSpot HTTP requests", () => {
       { query: "zaki", limit: 1 },
       { query: "zaki", limit: 1, after: "1" },
     ]);
+  });
+
+  test("builds raw bearer-authenticated JSON requests", () => {
+    const plan = buildApiRequestPlan({
+      method: "POST",
+      path: "crm/example",
+      options,
+      context: {
+        baseUrl: "https://api.hubapi.com",
+        apiVersion: "2026-03",
+      },
+      query: [["limit", "10"]],
+      body: { active: true },
+    });
+
+    expect(plan).toMatchObject({
+      method: "POST",
+      url: "https://api.hubapi.com/crm/example?limit=10&properties=email&properties=firstname",
+      headers: {
+        Authorization: "Bearer secret-token",
+        "Content-Type": "application/json",
+      },
+      body: { active: true },
+    });
+  });
+
+  test("reports missing endpoint path parameters", () => {
+    expect(() =>
+      buildRequestPlan({
+        endpoint: {
+          name: "test",
+          pattern: [],
+          method: "GET",
+          path: "/crm/:missing",
+          description: "Test endpoint.",
+          mutation: false,
+        },
+        params: {},
+        options,
+        context: {
+          baseUrl: "https://api.hubapi.com",
+          apiVersion: "2026-03",
+        },
+        query: [],
+      }),
+    ).toThrow('Missing path parameter "missing"');
+  });
+
+  test("handles empty, text, and unstructured error responses", async () => {
+    expect(
+      await executeRequest(
+        requestPlan("https://api.hubapi.com/test"),
+        async () => new Response("", { status: 204 }),
+      ),
+    ).toBeNull();
+    expect(
+      await executeRequest(
+        requestPlan("https://api.hubapi.com/test"),
+        async () => new Response("accepted"),
+      ),
+    ).toBe("accepted");
+
+    await expect(
+      executeRequest(
+        requestPlan("https://api.hubapi.com/test"),
+        async () =>
+          new Response("upstream unavailable", {
+            status: 503,
+            statusText: "Service Unavailable",
+          }),
+      ),
+    ).rejects.toThrow(
+      "HubSpot API returned 503 Service Unavailable: upstream unavailable",
+    );
+    await expect(
+      executeRequest(
+        requestPlan("https://api.hubapi.com/test"),
+        async () =>
+          Response.json(
+            { status: "error" },
+            { status: 400, statusText: "Bad Request" },
+          ),
+      ),
+    ).rejects.toThrow('{"status":"error"}');
+  });
+
+  test("accepts numeric cursors and rejects invalid pagination payloads", async () => {
+    const responses = [
+      {
+        results: [{ id: "1" }],
+        paging: { next: { after: 2 } },
+      },
+      {
+        results: [{ id: "2" }],
+      },
+    ];
+    const result = await executeAllPages(
+      requestPlan("https://api.hubapi.com/test"),
+      "query",
+      async () => Response.json(responses.shift()),
+    );
+    expect(result).toEqual({ results: [{ id: "1" }, { id: "2" }] });
+
+    await expect(
+      executeAllPages(
+        requestPlan("https://api.hubapi.com/test"),
+        "query",
+        async () => Response.json({ items: [] }),
+      ),
+    ).rejects.toThrow('"results" array');
+
+    expect(
+      await executeAllPages(
+        requestPlan("https://api.hubapi.com/test"),
+        "query",
+        async () =>
+          Response.json({
+            results: [],
+            paging: { next: { after: { invalid: true } } },
+          }),
+      ),
+    ).toEqual({ results: [] });
+  });
+
+  test("rejects repeated cursors and body pagination without an object body", async () => {
+    await expect(
+      executeAllPages(
+        requestPlan("https://api.hubapi.com/test"),
+        "query",
+        async () =>
+          Response.json({
+            results: [],
+            paging: { next: { after: "same" } },
+          }),
+      ),
+    ).rejects.toThrow('repeated cursor "same"');
+
+    await expect(
+      executeAllPages(
+        requestPlan("https://api.hubapi.com/test"),
+        "body",
+        async () =>
+          Response.json({
+            results: [],
+            paging: { next: { after: "next" } },
+          }),
+      ),
+    ).rejects.toThrow("Body pagination requires a JSON object body");
   });
 });
 

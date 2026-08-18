@@ -10,6 +10,7 @@ import type {
   QueryEntry,
   RequestPlan,
 } from "./types.js";
+import { isRecord, isSensitiveKey } from "./util.js";
 import { assignmentsToQueryEntries, redact } from "./values.js";
 
 export type Fetcher = (
@@ -110,7 +111,7 @@ export async function executeAllPages(
 
   for (;;) {
     const payload = await executeRequest(plan, fetcher);
-    if (!isObject(payload) || !Array.isArray(payload.results)) {
+    if (!isRecord(payload) || !Array.isArray(payload.results)) {
       throw new Error(
         'HubSpot pagination expected a JSON object with a "results" array',
       );
@@ -135,7 +136,7 @@ export async function executeAllPages(
 export function renderDryRun(plan: RequestPlan): unknown {
   return {
     method: plan.method,
-    url: plan.url,
+    url: redactUrl(plan.url),
     auth: { source: plan.auth.source },
     headers: redact(plan.headers),
     body: redact(plan.body),
@@ -189,7 +190,7 @@ function withCursor(
     return { ...plan, url: url.toString() };
   }
 
-  if (!isObject(plan.body)) {
+  if (!isRecord(plan.body)) {
     throw new Error("Body pagination requires a JSON object body");
   }
   return { ...plan, body: { ...plan.body, after: cursor } };
@@ -197,13 +198,23 @@ function withCursor(
 
 function nextCursor(payload: Record<string, unknown>): string | undefined {
   const paging = payload.paging;
-  if (!isObject(paging) || !isObject(paging.next)) {
+  if (!isRecord(paging) || !isRecord(paging.next)) {
     return undefined;
   }
   const after = paging.next.after;
   return typeof after === "string" || typeof after === "number"
     ? String(after)
     : undefined;
+}
+
+function redactUrl(input: string): string {
+  const url = new URL(input);
+  for (const name of [...url.searchParams.keys()]) {
+    if (isSensitiveKey(name)) {
+      url.searchParams.set(name, "[redacted]");
+    }
+  }
+  return url.toString();
 }
 
 function normalizePath(path: string): string {
@@ -215,7 +226,7 @@ function ensureTrailingSlash(url: string): string {
 }
 
 function formatErrorPayload(payload: unknown): string {
-  if (!isObject(payload)) {
+  if (!isRecord(payload)) {
     return typeof payload === "string" ? payload : JSON.stringify(payload);
   }
 
@@ -231,8 +242,4 @@ function formatErrorPayload(payload: unknown): string {
   ].filter((value): value is string => value !== undefined);
 
   return details.length === 0 ? message : `${message} (${details.join(", ")})`;
-}
-
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

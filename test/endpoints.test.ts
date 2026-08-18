@@ -84,4 +84,11 @@ describe("HubSpot endpoint registry", () => {
       findEndpoint(["objects", "search", "contacts"])?.endpoint.pagination,
     ).toBe("body");
   });
+
+  test("does not match unknown or incomplete commands", () => {
+    expect(findEndpoint(["unknown"])).toBeUndefined();
+    expect(
+      findEndpoint(["objects", undefined, "contacts"] as unknown as string[]),
+    ).toBeUndefined();
+  });
 });

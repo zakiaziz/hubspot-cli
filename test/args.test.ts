@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { getGlobalOptions, parseArgs } from "../src/args.js";
+import { getGlobalOptions, getString, parseArgs } from "../src/args.js";
 
 describe("parseArgs", () => {
   test("separates commands, known flags, and command fields", () => {
@@ -49,12 +49,15 @@ describe("parseArgs", () => {
     expect(getGlobalOptions(parsed).all).toBe(true);
   });
 
-  test("preserves unrecognized flags for command-specific fields", () => {
+  test("captures unrecognized flags for validation", () => {
     const parsed = parseArgs(["objects", "list", "contacts", "--properties", "email,name", "--archived=false"]);
 
     expect(parsed.unknownFlags).toEqual([
       { name: "properties", value: "email,name" },
       { name: "archived", value: "false" },
+    ]);
+    expect(parseArgs(["objects", "list", "contacts", "--archived"]).unknownFlags).toEqual([
+      { name: "archived", value: true },
     ]);
   });
 
@@ -63,4 +66,41 @@ describe("parseArgs", () => {
       "Missing value for --profile",
     );
   });
+
+  test("stops option parsing after the terminator", () => {
+    expect(
+      parseArgs(["api", "request", "GET", "/test", "--", "--literal"]),
+    ).toMatchObject({
+      command: ["api", "request", "GET", "/test", "--literal"],
+      unknownFlags: [],
+    });
+  });
+
+  test("normalizes manually constructed repeated values", () => {
+    const parsed = {
+      command: [],
+      flags: {
+        profile: ["first", "second"],
+        set: "limit=100",
+        query: "after=001",
+        property: "email=zaki@example.com",
+      },
+      unknownFlags: [],
+    };
+
+    expect(getString(parsed.flags, "profile")).toBe("second");
+    expect(getGlobalOptions(parsed)).toMatchObject({
+      set: ["limit=100"],
+      query: ["after=001"],
+      properties: ["email=zaki@example.com"],
+    });
+  });
+});
+
+test("boolean options accept only true or false", () => {
+  expect(getGlobalOptions(parseArgs(["--yes=true"])).yes).toBe(true);
+  expect(getGlobalOptions(parseArgs(["--yes=false"])).yes).toBe(false);
+  expect(() => parseArgs(["--yes=definitely"])).toThrow(
+    'Invalid boolean value "definitely" for --yes. Use true or false.',
+  );
 });

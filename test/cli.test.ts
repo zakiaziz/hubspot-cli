@@ -174,6 +174,110 @@ describe("hubspot CLI", () => {
     expect(help.stdout).toContain("hubspot api request <method> <path>");
     expect(version.stdout.trim()).toBe("0.1.0");
   });
+  test("rejects ambiguous boolean confirmation and unknown options", async () => {
+    const confirmation = await runCli([
+      "objects",
+      "archive",
+      "contacts",
+      "123",
+      "--access-token",
+      "secret-token",
+      "--yes=definitely",
+    ]);
+    expect(confirmation.exitCode).toBe(1);
+    expect(confirmation.stderr).toContain(
+      'Invalid boolean value "definitely" for --yes',
+    );
+
+    const typo = await runCli([
+      "objects",
+      "list",
+      "contacts",
+      "--access-token",
+      "secret-token",
+      "--propertis",
+      "email",
+    ]);
+    expect(typo.exitCode).toBe(1);
+    expect(typo.stderr).toContain(
+      'Unknown option "--propertis". Use --query for query parameters or --set for body fields.',
+    );
+  });
+
+  test("--from-env=false does not read environment credentials", async () => {
+    const result = await runCli(["setup", "work", "--from-env=false"], {
+      HUBSPOT_ACCESS_TOKEN: "environment-token",
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("Setup needs an access token");
+  });
+
+  test("rejects ignored arguments and options on built-in commands", async () => {
+    for (const args of [
+      ["profiles", "list", "extra"],
+      ["config", "show", "extra"],
+      ["completions", "bash", "extra"],
+      ["profiles", "list", "--profile", "work"],
+    ]) {
+      const result = await runCli(args);
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toMatch(/Usage:|not valid/);
+    }
+  });
+
+  test("manages profiles and global configuration", async () => {
+    const created = await runCli([
+      "profiles",
+      "create",
+      "work",
+      "--access-token",
+      "secret-token",
+    ]);
+    expect(created.exitCode).toBe(0);
+
+    const updated = await runCli([
+      "profiles",
+      "update",
+      "work",
+      "--api-version",
+      "2027-09",
+    ]);
+    expect(updated.exitCode).toBe(0);
+    expect((await runCli(["profiles", "use", "work"])).exitCode).toBe(0);
+
+    const listed = await runCli(["profiles", "list"]);
+    expect(JSON.parse(listed.stdout)).toEqual({
+      active: "work",
+      profiles: ["work"],
+    });
+
+    expect(
+      (await runCli(["config", "set", "baseUrl", "https://example.test"])).exitCode,
+    ).toBe(0);
+    expect((await runCli(["config", "get", "baseUrl"])).stdout.trim()).toBe(
+      "https://example.test",
+    );
+    expect(JSON.parse((await runCli(["config", "show"])).stdout)).toMatchObject({
+      activeProfile: "work",
+      baseUrl: "https://example.test",
+    });
+    expect(JSON.parse((await runCli(["config", "path"])).stdout)).toHaveProperty(
+      "configPath",
+    );
+    expect((await runCli(["config", "unset", "baseUrl"])).exitCode).toBe(0);
+    expect((await runCli(["profiles", "delete", "work"])).exitCode).toBe(0);
+  });
+
+  test("prints completions for supported shells", async () => {
+    const bash = await runCli(["completions", "bash"]);
+    const zsh = await runCli(["completions", "zsh"]);
+    const fish = await runCli(["completions", "fish"]);
+
+    expect(bash.stdout).toContain("complete -F _hubspot_complete hubspot");
+    expect(zsh.stdout).toContain("#compdef hubspot");
+    expect(fish.stdout).toContain("complete -c hubspot");
+  });
 });
 
 async function runCli(

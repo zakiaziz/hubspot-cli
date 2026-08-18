@@ -6,7 +6,6 @@ const valueFlags = new Set([
   "base-url",
   "api-version",
   "body",
-  "data",
   "set",
   "query",
   "property",
@@ -14,10 +13,8 @@ const valueFlags = new Set([
 
 const booleanFlags = new Set([
   "yes",
-  "force",
   "dry-run",
   "all",
-  "json",
   "help",
   "version",
   "from-env",
@@ -56,13 +53,16 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
     const name = aliases[parsed.name] ?? parsed.name;
 
     if (booleanFlags.has(name)) {
-      setFlag(flags, name, parsed.value ?? true);
+      setFlag(flags, name, parseBooleanFlag(name, parsed.value));
       continue;
     }
 
     if (valueFlags.has(name)) {
       const value = parsed.value ?? argv[index + 1];
-      if (value === undefined || (parsed.value === undefined && value.startsWith("-"))) {
+      if (
+        value === undefined ||
+        (parsed.value === undefined && value.startsWith("-"))
+      ) {
         throw new Error(`Missing value for --${name}`);
       }
       if (parsed.value === undefined) {
@@ -88,14 +88,13 @@ export function getGlobalOptions(parsed: ParsedArgs): GlobalOptions {
     accessToken: getString(parsed.flags, "access-token"),
     baseUrl: getString(parsed.flags, "base-url"),
     apiVersion: getString(parsed.flags, "api-version"),
-    body: getString(parsed.flags, "body") ?? getString(parsed.flags, "data"),
+    body: getString(parsed.flags, "body"),
     set: getStringArray(parsed.flags, "set"),
     query: getStringArray(parsed.flags, "query"),
     properties: getStringArray(parsed.flags, "property"),
-    yes: getBoolean(parsed.flags, "yes") || getBoolean(parsed.flags, "force"),
+    yes: getBoolean(parsed.flags, "yes"),
     dryRun: getBoolean(parsed.flags, "dry-run"),
     all: getBoolean(parsed.flags, "all"),
-    json: getBoolean(parsed.flags, "json"),
     help: getBoolean(parsed.flags, "help"),
     version: getBoolean(parsed.flags, "version"),
   };
@@ -119,14 +118,7 @@ export function getBoolean(
   flags: Record<string, string | boolean | string[]>,
   name: string,
 ): boolean {
-  const value = flags[name];
-  if (typeof value === "boolean") {
-    return value;
-  }
-  if (typeof value === "string") {
-    return value !== "false" && value !== "0";
-  }
-  return false;
+  return flags[name] === true;
 }
 
 function getStringArray(
@@ -154,6 +146,18 @@ function parseFlagToken(arg: string): { name: string; value?: string } {
     name: trimmed.slice(0, separator),
     value: trimmed.slice(separator + 1),
   };
+}
+
+function parseBooleanFlag(name: string, value: string | undefined): boolean {
+  if (value === undefined || value === "true") {
+    return true;
+  }
+  if (value === "false") {
+    return false;
+  }
+  throw new Error(
+    `Invalid boolean value "${value}" for --${name}. Use true or false.`,
+  );
 }
 
 function nextFlagValue(value: string | undefined): string | boolean {

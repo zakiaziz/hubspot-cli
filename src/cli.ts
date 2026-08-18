@@ -1,10 +1,10 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { stdin as input, stdout as output } from "node:process";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
-import { getGlobalOptions, getString, parseArgs } from "./args.js";
+import { getBoolean, getGlobalOptions, getString, parseArgs } from "./args.js";
 import { loadRuntimeContext } from "./auth.js";
 import {
   configDir,
@@ -44,9 +44,21 @@ import {
   mergeBody,
   propertyAssignmentsToBody,
   readJsonBody,
-  unknownFlagsToBody,
-  unknownFlagsToQueryEntries,
 } from "./values.js";
+import { environmentValue } from "./util.js";
+
+const authFlags = ["profile", "access-token", "base-url", "api-version"] as const;
+const profileWriteFlags = ["access-token", "base-url", "api-version"] as const;
+const requestFlags = [
+  ...authFlags,
+  "body",
+  "set",
+  "query",
+  "property",
+  "yes",
+  "dry-run",
+  "all",
+] as const;
 
 export async function main(argv = process.argv.slice(2)): Promise<void> {
   const parsed = parseArgs(argv);
@@ -60,6 +72,7 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
     printText(help());
     return;
   }
+  rejectUnknownOptions(parsed);
   await dispatch(parsed, options);
 }
 
@@ -67,26 +80,38 @@ async function dispatch(parsed: ParsedArgs, options: GlobalOptions): Promise<voi
   const [group, action] = parsed.command;
 
   if (group === "setup") {
+    assertAllowedFlags(parsed, [...authFlags, "from-env"]);
     await runSetup(parsed);
     return;
   }
   if (group === "profiles") {
+    const allowed = ["create", "update"].includes(action ?? "")
+      ? profileWriteFlags
+      : [];
+    assertAllowedFlags(parsed, allowed);
     runProfiles(parsed);
     return;
   }
   if (group === "config") {
+    assertAllowedFlags(parsed, []);
     runConfig(parsed);
     return;
   }
   if (group === "auth") {
+    assertAllowedFlags(parsed, authFlags);
     await runAuth(parsed, options);
     return;
   }
   if (group === "completions") {
+    assertAllowedFlags(parsed, []);
+    if (parsed.command.length !== 2) {
+      throw new Error("Usage: hubspot completions <bash|zsh|fish>");
+    }
     runCompletions(action);
     return;
   }
   if (group === "api" && action === "request") {
+    assertAllowedFlags(parsed, requestFlags);
     await runApiRequest(parsed, options);
     return;
   }
@@ -95,13 +120,13 @@ async function dispatch(parsed: ParsedArgs, options: GlobalOptions): Promise<voi
   if (!match) {
     throw new Error(`Unknown command "${parsed.command.join(" ")}". Run hubspot --help.`);
   }
-  await runEndpoint(match.endpoint, match.params, parsed, options);
+  assertAllowedFlags(parsed, requestFlags);
+  await runEndpoint(match.endpoint, match.params, options);
 }
 
 async function runEndpoint(
   endpoint: Endpoint,
   params: Record<string, string>,
-  parsed: ParsedArgs,
   options: GlobalOptions,
 ): Promise<void> {
   requireMutationConfirmation(endpoint.name, endpoint.mutation, options);
@@ -110,12 +135,9 @@ async function runEndpoint(
   const body =
     endpoint.method === "GET"
       ? undefined
-      : (buildBody(parsed, options, supportsProperties(endpoint)) ??
+      : (buildBody(options, supportsProperties(endpoint)) ??
         (endpoint.pagination === "body" ? {} : undefined));
-  const query =
-    endpoint.method === "GET"
-      ? unknownFlagsToQueryEntries(parsed.unknownFlags)
-      : [];
+  const query: QueryEntry[] = [];
   const plan = buildRequestPlan({
     endpoint,
     params,
@@ -159,11 +181,8 @@ async function runApiRequest(
   validateBodyOptions(method, options, false);
 
   const body =
-    method === "GET" ? undefined : buildBody(parsed, options, false);
-  const query: QueryEntry[] =
-    method === "GET"
-      ? unknownFlagsToQueryEntries(parsed.unknownFlags)
-      : [];
+    method === "GET" ? undefined : buildBody(options, false);
+  const query: QueryEntry[] = [];
   const plan = buildApiRequestPlan({
     method,
     path,
@@ -187,7 +206,7 @@ async function runSetup(parsed: ParsedArgs): Promise<void> {
     throw new Error("Usage: hubspot setup [profile] [options]");
   }
 
-  const fromEnvironment = Boolean(parsed.flags["from-env"]);
+  const fromEnvironment = getBoolean(parsed.flags, "from-env");
   let accessToken = getString(parsed.flags, "access-token");
   if (fromEnvironment) {
     accessToken = accessToken ?? environmentValue("HUBSPOT_ACCESS_TOKEN");
@@ -226,19 +245,26 @@ async function runSetup(parsed: ParsedArgs): Promise<void> {
 
 function runProfiles(parsed: ParsedArgs): void {
   const action = parsed.command[1];
-  const name = parsed.command[2] ?? getString(parsed.flags, "profile");
+  const name = parsed.command[2];
 
   switch (action) {
     case "list":
+      if (parsed.command.length !== 2) {
+        throw new Error("Usage: hubspot profiles list");
+      }
       printJson({ active: getActiveProfileName(), profiles: listProfiles() });
       return;
     case "show":
-      if (!name) throw new Error("Usage: hubspot profiles show <name>");
+      if (!name || parsed.command.length !== 3) {
+        throw new Error("Usage: hubspot profiles show <name>");
+      }
       printRedacted(showProfile(name));
       return;
     case "create":
     case "update": {
-      if (!name) throw new Error(`Usage: hubspot profiles ${action} <name> [options]`);
+      if (!name || parsed.command.length !== 3) {
+        throw new Error(`Usage: hubspot profiles ${action} <name> [options]`);
+      }
       const fields = profileFieldsFromFlags(parsed);
       if (Object.keys(fields).length === 0) {
         throw new Error(
@@ -252,12 +278,16 @@ function runProfiles(parsed: ParsedArgs): void {
       return;
     }
     case "delete":
-      if (!name) throw new Error("Usage: hubspot profiles delete <name>");
+      if (!name || parsed.command.length !== 3) {
+        throw new Error("Usage: hubspot profiles delete <name>");
+      }
       deleteProfile(name);
       printJson({ deleted: name });
       return;
     case "use":
-      if (!name) throw new Error("Usage: hubspot profiles use <name>");
+      if (!name || parsed.command.length !== 3) {
+        throw new Error("Usage: hubspot profiles use <name>");
+      }
       requireProfile(name);
       setActiveProfileName(name);
       printJson({ active: name });
@@ -276,23 +306,33 @@ function runConfig(parsed: ParsedArgs): void {
 
   switch (action) {
     case "path":
+      if (parsed.command.length !== 2) {
+        throw new Error("Usage: hubspot config path");
+      }
       printJson({ configDir: configDir(), configPath: configPath() });
       return;
     case "show":
+      if (parsed.command.length !== 2) {
+        throw new Error("Usage: hubspot config show");
+      }
       printRedacted(readConfig());
       return;
     case "get":
-      if (!key) throw new Error("Usage: hubspot config get <key>");
+      if (!key || parsed.command.length !== 3) {
+        throw new Error("Usage: hubspot config get <key>");
+      }
       printResult(configGet(key) ?? null);
       return;
     case "set":
-      if (!key || value === undefined) {
+      if (!key || value === undefined || parsed.command.length !== 4) {
         throw new Error("Usage: hubspot config set <key> <value>");
       }
       printRedacted(configSet(key, value));
       return;
     case "unset":
-      if (!key) throw new Error("Usage: hubspot config unset <key>");
+      if (!key || parsed.command.length !== 3) {
+        throw new Error("Usage: hubspot config unset <key>");
+      }
       printRedacted(configUnset(key));
       return;
     default:
@@ -360,7 +400,7 @@ function validateBodyOptions(
     method === "GET" &&
     (options.body || options.set.length > 0 || options.properties.length > 0)
   ) {
-    throw new Error("GET commands do not accept --body, --data, --set, or --property");
+    throw new Error("GET commands do not accept --body, --set, or --property");
   }
   if (!allowProperties && options.properties.length > 0) {
     throw new Error(
@@ -370,11 +410,10 @@ function validateBodyOptions(
 }
 
 function buildBody(
-  parsed: ParsedArgs,
   options: GlobalOptions,
   allowProperties: boolean,
 ): unknown {
-  const generated = unknownFlagsToBody(parsed.unknownFlags);
+  const generated: Record<string, unknown> = {};
   applyAssignments(generated, options.set);
   const withProperties = mergeBody(
     generated,
@@ -390,6 +429,28 @@ function buildBody(
     return undefined;
   }
   return mergeBody(exact, withProperties);
+}
+
+function rejectUnknownOptions(parsed: ParsedArgs): void {
+  const option = parsed.unknownFlags[0];
+  if (!option) {
+    return;
+  }
+  throw new Error(
+    `Unknown option "--${option.name}". Use --query for query parameters or --set for body fields.`,
+  );
+}
+
+function assertAllowedFlags(
+  parsed: ParsedArgs,
+  allowed: readonly string[],
+): void {
+  const allowedSet = new Set(allowed);
+  for (const name of Object.keys(parsed.flags)) {
+    if (!allowedSet.has(name)) {
+      throw new Error(`Option "--${name}" is not valid for this command`);
+    }
+  }
 }
 
 function supportsProperties(endpoint: Endpoint): boolean {
@@ -443,21 +504,20 @@ Configuration:
 API commands:
 ${commandLines.join("\n")}
   hubspot api request <method> <path>
-      Call any HubSpot API path.
+      Call a bearer-authenticated JSON API path.
 
 Global options:
   --profile <name>          Select a profile.
   --access-token <token>    Override the bearer access token.
   --base-url <url>          Override https://api.hubapi.com.
   --api-version <YYYY-MM>   Override 2026-03 in first-class commands.
-  --body, --data <json|@file>
-                            Supply an exact JSON body.
+  --body <json|@file>       Supply an exact JSON body.
   --set <path=value>        Set a typed body field; repeatable.
   --property <name=value>   Set a CRM property string; repeatable.
   --query <name=value>      Add an exact query parameter; repeatable.
   --all                     Follow every page for supported commands.
   --dry-run                 Print a redacted request without sending it.
-  --yes, -y, --force        Confirm a mutation.
+  --yes, -y                 Confirm a mutation.
   --help, -h                Show help.
   --version, -v             Show version.`;
 }
@@ -489,10 +549,6 @@ function version(): string {
   return packageJson.version;
 }
 
-function environmentValue(name: string): string | undefined {
-  const value = process.env[name]?.trim();
-  return value ? value : undefined;
-}
 
 const currentFile = fileURLToPath(import.meta.url);
 if (process.argv[1] && resolve(process.argv[1]) === currentFile) {

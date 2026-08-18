@@ -13,7 +13,6 @@ const baseOptions: GlobalOptions = {
   yes: false,
   dryRun: false,
   all: false,
-  json: false,
   help: false,
   version: false,
 };
@@ -61,6 +60,22 @@ describe("HubSpot authentication", () => {
     });
   });
 
+  test("resolves access tokens from the selected profile", () => {
+    delete process.env.HUBSPOT_ACCESS_TOKEN;
+
+    expect(
+      resolveAccessToken(baseOptions, {
+        baseUrl: "https://api.hubapi.com",
+        apiVersion: "2026-03",
+        profileName: "work",
+        profile: { accessToken: "profile-token" },
+      }),
+    ).toEqual({
+      token: "profile-token",
+      source: "profile:work",
+    });
+  });
+
   test("reports every supported token source when authentication is missing", () => {
     delete process.env.HUBSPOT_ACCESS_TOKEN;
 
@@ -85,6 +100,14 @@ describe("HubSpot authentication", () => {
       baseUrl: "https://example.test",
       apiVersion: "2027-09",
     });
+  });
+
+  test("rejects invalid environment configuration", () => {
+    process.env.HUBSPOT_API_VERSION = "v3";
+
+    expect(() => loadRuntimeContext(baseOptions)).toThrow(
+      'Invalid apiVersion "v3"',
+    );
   });
 });
 

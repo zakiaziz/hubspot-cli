@@ -2,7 +2,7 @@
 
 A human-friendly command-line interface for the HubSpot API.
 
-This project owns the `hubspot` binary. It is not the official HubSpot CLI. It focuses on common Customer Relationship Management (CRM) operations and provides `api request` for every other HubSpot API path.
+This project owns the `hubspot` binary. It is not the official HubSpot CLI. It focuses on common Customer Relationship Management (CRM) operations and provides `api request` for other bearer-authenticated JSON endpoints.
 
 ## Install
 
@@ -55,7 +55,7 @@ The CLI sends OAuth access tokens but does not refresh them. If you use OAuth, p
 
 Responses are printed as formatted JSON when HubSpot returns JSON.
 
-Commands that change HubSpot state require `--yes` or `--force`. Use `--dry-run` to inspect a redacted request without sending it.
+Commands that change HubSpot state require `--yes`. Use `--dry-run` to inspect a redacted request without sending it.
 
 ```bash
 hubspot objects create contacts \
@@ -84,7 +84,7 @@ hubspot objects update deals 123 \
   --dry-run
 ```
 
-Use `--body <json|@file>` or `--data <json|@file>` for an exact JSON request. Use repeatable `--set path=value` options for typed body fields. Values that look like booleans, numbers, null, arrays, or objects are parsed as JSON-compatible values.
+Use `--body <json|@file>` for an exact JSON request. Use repeatable `--set path=value` options for typed body fields. Values that look like booleans, numbers, null, arrays, or objects are parsed as JSON-compatible values.
 
 ```bash
 hubspot objects search deals \
@@ -94,12 +94,12 @@ hubspot objects search deals \
   --all
 ```
 
-For GET commands, unrecognized flags become camelCase query parameters. For non-GET commands, they become camelCase body fields. Use repeatable `--query name=value` when you need an exact query parameter name or duplicate values.
+Use repeatable `--query name=value` options for query parameters. Use `--set` for generated JSON body fields. The CLI rejects unknown options so a typo cannot silently change a request.
 
 ```bash
 hubspot objects list contacts \
-  --properties email,firstname,lastname \
-  --limit 100 \
+  --query properties=email,firstname,lastname \
+  --query limit=100 \
   --all
 
 hubspot objects get contacts zaki@example.com \
@@ -119,9 +119,9 @@ hubspot objects get contacts zaki@example.com \
 | `hubspot profiles use <name>` | Activate a profile. |
 | `hubspot config path` | Show configuration paths. |
 | `hubspot config show` | Show global configuration. |
-| `hubspot config get <key>` | Read a dotted configuration key. |
-| `hubspot config set <key> <value>` | Set a dotted configuration key. |
-| `hubspot config unset <key>` | Remove a dotted configuration key. |
+| `hubspot config get <key>` | Read a configuration key. |
+| `hubspot config set <key> <value>` | Set `baseUrl` or `apiVersion`. |
+| `hubspot config unset <key>` | Remove `baseUrl` or `apiVersion`. |
 | `hubspot auth verify` | Verify the token and return HubSpot account details. |
 | `hubspot completions bash` | Print Bash completions. |
 | `hubspot completions zsh` | Print Z shell completions. |
@@ -225,7 +225,7 @@ hubspot objects batch-upsert contacts \
 
 ## Raw API access
 
-Use raw access for HubSpot endpoints that do not have a first-class command:
+Use raw access for bearer-authenticated JSON endpoints that do not have a first-class command. OAuth token exchange, multipart uploads, and other content types are outside this command's contract:
 
 ```bash
 hubspot api request GET /crm/limits/2026-03/records
@@ -249,14 +249,13 @@ The complete form is `hubspot api request <GET|POST|PUT|PATCH|DELETE> <path>`.
 | `--access-token <token>` | Override the bearer access token. |
 | `--base-url <url>` | Override the API root. |
 | `--api-version <YYYY-MM>` | Override the date version in first-class paths. |
-| `--body <json|@file>`, `--data <json|@file>` | Supply an exact JSON body. |
+| `--body <json|@file>` | Supply an exact JSON body. |
 | `--set <path=value>` | Set a typed body field. Repeatable. |
 | `--property <name=value>` | Set a CRM property string. Repeatable. |
 | `--query <name=value>` | Add an exact query parameter. Repeatable and duplicate-preserving. |
 | `--all` | Follow every page for supported list and search commands. |
 | `--dry-run` | Print a redacted request without sending it. |
-| `--yes`, `-y`, `--force` | Confirm a mutation. |
-| `--json` | Accepted for compatibility; JSON responses are already formatted. |
+| `--yes`, `-y` | Confirm a mutation. |
 | `--help`, `-h` | Show help. |
 | `--version`, `-v` | Show the version. |
 
@@ -269,7 +268,7 @@ bun test
 bun run build
 ```
 
-The published CLI requires Node.js 20 or newer and has no runtime dependencies.
+The published CLI requires Bun 1.3 or newer and has no runtime dependencies.
 
 ## API references
 

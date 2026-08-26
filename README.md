@@ -6,8 +6,11 @@ This project owns the `hubspot` binary. It is not the official HubSpot CLI. It f
 
 ## Install
 
+Install the versioned package from GitHub Releases:
+
 ```bash
-bun add --global @zakiaziz/hubspot-cli
+bun add --global \
+  '@zakiaziz/hubspot-cli@https://github.com/zakiaziz/hubspot-cli/releases/download/v0.1.0/hubspot-cli-0.1.0.tgz'
 ```
 
 For local development:

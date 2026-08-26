@@ -30,7 +30,13 @@ import {
   executeRequest,
   renderDryRun,
 } from "./http.js";
-import { printJson, printRedacted, printResult, printText } from "./output.js";
+import {
+  printError,
+  printJson,
+  printRedacted,
+  printResult,
+  printText,
+} from "./output.js";
 import type {
   Endpoint,
   GlobalOptions,
@@ -65,7 +71,7 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
   const options = getGlobalOptions(parsed);
 
   if (options.version) {
-    printText(version());
+    printJson({ version: version() });
     return;
   }
   if (options.help || parsed.command.length === 0) {
@@ -501,6 +507,11 @@ Configuration:
   hubspot auth verify
   hubspot completions <bash|zsh|fish>
 
+Output:
+  Operational commands print JSON to stdout.
+  Failures print structured JSON to stderr.
+  Help and completion commands print text.
+
 API commands:
 ${commandLines.join("\n")}
   hubspot api request <method> <path>
@@ -519,7 +530,7 @@ Global options:
   --dry-run                 Print a redacted request without sending it.
   --yes, -y                 Confirm a mutation.
   --help, -h                Show help.
-  --version, -v             Show version.`;
+  --version, -v             Show version as JSON.`;
 }
 
 function topLevelWords(): string[] {
@@ -553,7 +564,7 @@ function version(): string {
 const currentFile = fileURLToPath(import.meta.url);
 if (process.argv[1] && resolve(process.argv[1]) === currentFile) {
   main().catch((error: unknown) => {
-    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+    printError(error);
     process.exitCode = 1;
   });
 }

@@ -1,3 +1,4 @@
+import { HubSpotApiError } from "./http.js";
 import { redact } from "./values.js";
 
 export function printJson(value: unknown): void {
@@ -9,9 +10,34 @@ export function printText(value: string): void {
 }
 
 export function printResult(value: unknown): void {
-  typeof value === "string" ? printText(value) : printJson(value);
+  printJson(value);
 }
 
 export function printRedacted(value: unknown): void {
   printJson(redact(value));
+}
+
+export function printError(error: unknown): void {
+  const output =
+    error instanceof HubSpotApiError
+      ? {
+          error: {
+            code: error.code,
+            message: error.apiMessage,
+            status: error.status,
+            statusText: error.statusText,
+            ...(error.category ? { category: error.category } : {}),
+            ...(error.correlationId
+              ? { correlationId: error.correlationId }
+              : {}),
+          },
+        }
+      : {
+          error: {
+            code: "CLI_ERROR",
+            message: error instanceof Error ? error.message : String(error),
+          },
+        };
+
+  process.stderr.write(`${JSON.stringify(output, null, 2)}\n`);
 }

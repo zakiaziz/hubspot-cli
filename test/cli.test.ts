@@ -73,9 +73,14 @@ describe("hubspot CLI", () => {
     ]);
 
     expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain(
-      '"objects archive" changes HubSpot state. Re-run with --dry-run or --yes.',
-    );
+    expect(result.stdout).toBe("");
+    expect(JSON.parse(result.stderr)).toEqual({
+      error: {
+        code: "CLI_ERROR",
+        message:
+          '"objects archive" changes HubSpot state. Re-run with --dry-run or --yes.',
+      },
+    });
   });
 
   test("supports PATCH and duplicate query values through raw API access", async () => {
@@ -165,6 +170,80 @@ describe("hubspot CLI", () => {
     }
   });
 
+  test("prints text API responses as JSON", async () => {
+    const server = Bun.serve({
+      port: 0,
+      fetch() {
+        return new Response("accepted", {
+          headers: { "content-type": "text/plain" },
+        });
+      },
+    });
+
+    try {
+      const result = await runCli([
+        "api",
+        "request",
+        "GET",
+        "/plain",
+        "--access-token",
+        "secret-token",
+        "--base-url",
+        server.url.toString(),
+      ]);
+
+      expect(result.exitCode).toBe(0);
+      expect(JSON.parse(result.stdout)).toBe("accepted");
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test("prints structured HubSpot API errors as JSON", async () => {
+    const server = Bun.serve({
+      port: 0,
+      fetch() {
+        return Response.json(
+          {
+            status: "error",
+            message: "Invalid property",
+            category: "VALIDATION_ERROR",
+            correlationId: "abc-123",
+          },
+          { status: 400, statusText: "Bad Request" },
+        );
+      },
+    });
+
+    try {
+      const result = await runCli([
+        "api",
+        "request",
+        "GET",
+        "/failure",
+        "--access-token",
+        "secret-token",
+        "--base-url",
+        server.url.toString(),
+      ]);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stdout).toBe("");
+      expect(JSON.parse(result.stderr)).toEqual({
+        error: {
+          code: "HUBSPOT_API_ERROR",
+          message: "Invalid property",
+          status: 400,
+          statusText: "Bad Request",
+          category: "VALIDATION_ERROR",
+          correlationId: "abc-123",
+        },
+      });
+    } finally {
+      server.stop(true);
+    }
+  });
+
   test("prints help and version without authentication", async () => {
     const help = await runCli(["--help"]);
     const version = await runCli(["--version"]);
@@ -172,7 +251,7 @@ describe("hubspot CLI", () => {
     expect(help.exitCode).toBe(0);
     expect(help.stdout).toContain("hubspot objects list <objectType>");
     expect(help.stdout).toContain("hubspot api request <method> <path>");
-    expect(version.stdout.trim()).toBe("0.1.0");
+    expect(JSON.parse(version.stdout)).toEqual({ version: "0.2.0" });
   });
   test("rejects ambiguous boolean confirmation and unknown options", async () => {
     const confirmation = await runCli([
@@ -185,9 +264,13 @@ describe("hubspot CLI", () => {
       "--yes=definitely",
     ]);
     expect(confirmation.exitCode).toBe(1);
-    expect(confirmation.stderr).toContain(
-      'Invalid boolean value "definitely" for --yes',
-    );
+    expect(JSON.parse(confirmation.stderr)).toEqual({
+      error: {
+        code: "CLI_ERROR",
+        message:
+          'Invalid boolean value "definitely" for --yes. Use true or false.',
+      },
+    });
 
     const typo = await runCli([
       "objects",
@@ -199,9 +282,13 @@ describe("hubspot CLI", () => {
       "email",
     ]);
     expect(typo.exitCode).toBe(1);
-    expect(typo.stderr).toContain(
-      'Unknown option "--propertis". Use --query for query parameters or --set for body fields.',
-    );
+    expect(JSON.parse(typo.stderr)).toEqual({
+      error: {
+        code: "CLI_ERROR",
+        message:
+          'Unknown option "--propertis". Use --query for query parameters or --set for body fields.',
+      },
+    });
   });
 
   test("--from-env=false does not read environment credentials", async () => {
@@ -210,7 +297,12 @@ describe("hubspot CLI", () => {
     });
 
     expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain("Setup needs an access token");
+    expect(JSON.parse(result.stderr)).toMatchObject({
+      error: {
+        code: "CLI_ERROR",
+        message: expect.stringContaining("Setup needs an access token"),
+      },
+    });
   });
 
   test("rejects ignored arguments and options on built-in commands", async () => {
@@ -222,7 +314,12 @@ describe("hubspot CLI", () => {
     ]) {
       const result = await runCli(args);
       expect(result.exitCode).toBe(1);
-      expect(result.stderr).toMatch(/Usage:|not valid/);
+      expect(JSON.parse(result.stderr)).toMatchObject({
+        error: {
+          code: "CLI_ERROR",
+          message: expect.stringMatching(/Usage:|not valid/),
+        },
+      });
     }
   });
 
@@ -255,9 +352,9 @@ describe("hubspot CLI", () => {
     expect(
       (await runCli(["config", "set", "baseUrl", "https://example.test"])).exitCode,
     ).toBe(0);
-    expect((await runCli(["config", "get", "baseUrl"])).stdout.trim()).toBe(
-      "https://example.test",
-    );
+    expect(
+      JSON.parse((await runCli(["config", "get", "baseUrl"])).stdout),
+    ).toBe("https://example.test");
     expect(JSON.parse((await runCli(["config", "show"])).stdout)).toMatchObject({
       activeProfile: "work",
       baseUrl: "https://example.test",

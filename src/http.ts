@@ -27,6 +27,29 @@ export interface BuildRequestOptions {
   readonly body?: unknown;
 }
 
+export class HubSpotApiError extends Error {
+  readonly code = "HUBSPOT_API_ERROR";
+
+  constructor(
+    readonly status: number,
+    readonly statusText: string,
+    readonly apiMessage: string,
+    readonly category?: string,
+    readonly correlationId?: string,
+  ) {
+    const details = [
+      category ? `category: ${category}` : undefined,
+      correlationId ? `correlationId: ${correlationId}` : undefined,
+    ].filter((value): value is string => value !== undefined);
+    const suffix = details.length === 0 ? "" : ` (${details.join(", ")})`;
+
+    super(
+      `HubSpot API returned ${status} ${statusText}: ${apiMessage}${suffix}`,
+    );
+    this.name = "HubSpotApiError";
+  }
+}
+
 export function buildRequestPlan(input: BuildRequestOptions): RequestPlan {
   const auth = requireAccessToken(
     resolveAccessToken(input.options, input.context),
@@ -91,8 +114,13 @@ export async function executeRequest(
       : text;
 
   if (!response.ok) {
-    throw new Error(
-      `HubSpot API returned ${response.status} ${response.statusText}: ${formatErrorPayload(payload)}`,
+    const details = parseErrorPayload(payload);
+    throw new HubSpotApiError(
+      response.status,
+      response.statusText,
+      details.message,
+      details.category,
+      details.correlationId,
     );
   }
 
@@ -225,21 +253,28 @@ function ensureTrailingSlash(url: string): string {
   return url.endsWith("/") ? url : `${url}/`;
 }
 
-function formatErrorPayload(payload: unknown): string {
+function parseErrorPayload(payload: unknown): {
+  message: string;
+  category?: string;
+  correlationId?: string;
+} {
   if (!isRecord(payload)) {
-    return typeof payload === "string" ? payload : JSON.stringify(payload);
+    return {
+      message:
+        typeof payload === "string" ? payload : JSON.stringify(payload),
+    };
   }
 
-  const message =
-    typeof payload.message === "string" ? payload.message : JSON.stringify(payload);
-  const details = [
-    typeof payload.category === "string"
-      ? `category: ${payload.category}`
-      : undefined,
-    typeof payload.correlationId === "string"
-      ? `correlationId: ${payload.correlationId}`
-      : undefined,
-  ].filter((value): value is string => value !== undefined);
-
-  return details.length === 0 ? message : `${message} (${details.join(", ")})`;
+  return {
+    message:
+      typeof payload.message === "string"
+        ? payload.message
+        : JSON.stringify(payload),
+    ...(typeof payload.category === "string"
+      ? { category: payload.category }
+      : {}),
+    ...(typeof payload.correlationId === "string"
+      ? { correlationId: payload.correlationId }
+      : {}),
+  };
 }

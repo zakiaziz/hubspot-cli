@@ -1,6 +1,6 @@
 # hubspot-cli
 
-A human-friendly command-line interface for the HubSpot API.
+An agent-friendly command-line interface for the HubSpot API.
 
 This project owns the `hubspot` binary. It is not the official HubSpot CLI. It focuses on common Customer Relationship Management (CRM) operations and provides `api request` for other bearer-authenticated JSON endpoints.
 
@@ -10,7 +10,7 @@ Install the versioned package from GitHub Releases:
 
 ```bash
 bun add --global \
-  '@zakiaziz/hubspot-cli@https://github.com/zakiaziz/hubspot-cli/releases/download/v0.1.0/hubspot-cli-0.1.0.tgz'
+  '@zakiaziz/hubspot-cli@https://github.com/zakiaziz/hubspot-cli/releases/download/v0.2.0/hubspot-cli-0.2.0.tgz'
 ```
 
 For local development:
@@ -54,9 +54,30 @@ The default API root is `https://api.hubapi.com`. First-class commands default t
 
 The CLI sends OAuth access tokens but does not refresh them. If you use OAuth, provide a current access token.
 
-## Command conventions
+## Output contract
 
-Responses are printed as formatted JSON when HubSpot returns JSON.
+Operational commands write one valid JSON document to `stdout`. HubSpot JSON responses retain their original shape, while plain-text API responses become JSON strings. `hubspot --version` returns a JSON object.
+
+Failures use a nonzero exit status and write structured JSON to `stderr`:
+
+```json
+{
+  "error": {
+    "code": "HUBSPOT_API_ERROR",
+    "message": "Invalid property",
+    "status": 400,
+    "statusText": "Bad Request",
+    "category": "VALIDATION_ERROR",
+    "correlationId": "abc-123"
+  }
+}
+```
+
+Client-side validation and configuration failures use `CLI_ERROR`. HubSpot API failures use `HUBSPOT_API_ERROR` and include available response metadata.
+
+`hubspot --help` and shell completion commands intentionally print text. There is no `--json` flag because JSON is the default for every operational command.
+
+## Command conventions
 
 Commands that change HubSpot state require `--yes`. Use `--dry-run` to inspect a redacted request without sending it.
 

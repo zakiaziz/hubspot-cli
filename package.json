@@ -1,7 +1,7 @@
 {
   "name": "@zakiaziz/hubspot-cli",
-  "version": "0.1.0",
-  "description": "A human-friendly command line interface for the HubSpot API.",
+  "version": "0.2.0",
+  "description": "An agent-friendly command line interface for the HubSpot API.",
   "type": "module",
   "bin": {
     "hubspot": "./dist/cli.js"

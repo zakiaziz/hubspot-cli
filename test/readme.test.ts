@@ -43,6 +43,14 @@ describe("README command reference", () => {
     }
   });
 
+  test("defines the agent-friendly JSON output contract", () => {
+    expect(readme).toContain("agent-friendly");
+    expect(readme).toContain("valid JSON document");
+    expect(readme).toContain("structured JSON");
+    expect(readme).toContain("There is no `--json` flag");
+    expect(readme).not.toContain("human-friendly");
+  });
+
   test("does not use em dashes", () => {
     expect(readme).not.toContain("—");
   });

@@ -1,8 +1,6 @@
 #!/usr/bin/env bun
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { stdin as input, stdout as output } from "node:process";
-import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 import { getBoolean, getGlobalOptions, getString, parseArgs } from "./args.js";
 import { loadRuntimeContext } from "./auth.js";
@@ -216,15 +214,6 @@ async function runSetup(parsed: ParsedArgs): Promise<void> {
   let accessToken = getString(parsed.flags, "access-token");
   if (fromEnvironment) {
     accessToken = accessToken ?? environmentValue("HUBSPOT_ACCESS_TOKEN");
-  }
-  if (!accessToken && process.stdin.isTTY) {
-    const prompt = createInterface({ input, output });
-    try {
-      accessToken =
-        (await prompt.question("HubSpot access token: ")).trim() || undefined;
-    } finally {
-      prompt.close();
-    }
   }
   if (!accessToken) {
     throw new Error(

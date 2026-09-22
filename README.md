@@ -24,6 +24,8 @@ bun link
 
 ## Set up authentication
 
+Setup is noninteractive. Supply `--access-token`, or use `--from-env` with `HUBSPOT_ACCESS_TOKEN`. Missing credentials produce a JSON error and exit status 1.
+
 HubSpot accepts static auth access tokens, service keys, and OAuth access tokens as bearer tokens. For a single-account command-line workflow, create a static auth access token or service key with only the scopes you need.
 
 ```bash

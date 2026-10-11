@@ -1,10 +1,12 @@
 # CLI conventions
 
-The command-line contract this tool follows. Read before designing,
+The command-line contract of the `hubspot` executable. Read before designing,
 implementing, or reviewing commands.
 
 Rules have stable IDs. MUST is required; SHOULD permits a documented exception
-with its reason. Cite IDs in findings. Existing code is not precedent.
+with its reason. Cite IDs in findings. Existing code is not precedent. The
+command registry in `src/` is the command specification (`CLI-SPEC-1`); the
+README `Exceptions` section records every exception.
 
 ## Command grammar
 
@@ -42,13 +44,13 @@ with its reason. Cite IDs in findings. Existing code is not precedent.
 | export / import | Transfer content through a documented file format. |
 | batch-get / batch-create / batch-update | Operate on explicit multiple targets. |
 
-Illustrative shapes, using a generic `tool` executable:
+Examples:
 
 ~~~bash
-tool notes get NOTE_ID
-tool notes transcript get NOTE_ID
-tool articles update ARTICLE_ID --title "New title"
-tool objects get RECORD_ID --type contacts
+hubspot objects get RECORD_ID --type contacts
+hubspot objects update RECORD_ID --type deals --property amount=1000000
+hubspot stages get STAGE_ID --type deals --pipeline-id PIPELINE_ID
+hubspot account usage get
 ~~~
 
 ## Arguments and input
@@ -125,9 +127,11 @@ Additional presentation formats such as markdown require explicit command suppor
   files, or hidden prompts instead of command-line values. MUST redact secrets
   in diagnostics, previews, and configuration inspection. Declare intentional
   secret output, such as a newly created webhook signing secret.
-- `CLI-CFG-5` MUST keep configuration per tool, honor an absolute
-  XDG_CONFIG_HOME with ~/.config as fallback, and protect credential files
-  with mode 0600 and their directories with mode 0700 on Unix.
+- `CLI-CFG-5` MUST keep configuration in a directory named after the
+  executable, `~/.config/hubspot`, never the repo or package name
+  (`hubspot-cli`). Honor an absolute XDG_CONFIG_HOME with ~/.config as
+  fallback, and protect credential files with mode 0600 and their directories
+  with mode 0700 on Unix.
 - `CLI-CFG-6` MUST describe what auth verify proves. A successful resource
   request does not prove identity or complete permission coverage.
 
@@ -169,7 +173,7 @@ Additional presentation formats such as markdown require explicit command suppor
 
 ~~~json
 {
-  "data": [{"id": "789", "title": "Reset your password"}],
+  "data": [{"id": "101", "properties": {"firstname": "Ada"}}],
   "meta": {"next_cursor": null, "has_more": false}
 }
 ~~~
@@ -187,10 +191,10 @@ Additional presentation formats such as markdown require explicit command suppor
   presentation. Do not switch formats automatically based on terminal detection.
 
 ~~~bash
-tool notes list                            # Compact, uncolored JSON.
-tool notes list --format pretty            # Indented JSON; highlighted in a terminal.
-tool notes list --format pretty --color never
-tool notes list --format human             # Human-readable table.
+hubspot objects list --type contacts                            # Compact, uncolored JSON.
+hubspot objects list --type contacts --format pretty            # Indented JSON; highlighted in a terminal.
+hubspot objects list --type contacts --format pretty --color never
+hubspot objects list --type contacts --format human             # Human-readable table.
 ~~~
 
 ## Errors and exit codes
@@ -224,8 +228,8 @@ tool notes list --format human             # Human-readable table.
 {
   "error": {
     "code": "INVALID_ARGUMENT",
-    "message": "--page-size must be between 1 and 30; received 100.",
-    "hint": "Use --page-size 30.",
+    "message": "--page-size must be an integer from 1 to 100; received \"101\".",
+    "hint": "Use --page-size 100.",
     "retryable": false
   }
 }
@@ -288,70 +292,117 @@ tool notes list --format human             # Human-readable table.
   or singular/plural synonyms.
 - `CLI-COMPAT-3` MUST explicitly migrate existing -v version behavior before
   assigning -v to verbose. Do not silently reinterpret scripts.
-- `CLI-ARCH-1` SHOULD centralize parsing, output, errors, confirmation, and help
+- `CLI-ARCH-1` SHOULD share parsing, output, errors, confirmation, and help
   machinery. MUST keep provider authentication and API behavior in focused
   components. Prefer composition over a provider-aware base class.
-- `CLI-VERIFY-1` MUST verify changed contracts with appropriate tests: parsing
-  failures before requests, streams, schemas, exit codes, non-interactive
-  execution, confirmation, previews, pagination, and partial failures as
-  relevant. Never exercise live mutations merely to test CLI behavior.
+- `CLI-VERIFY-1` MUST verify changed contracts by running the built CLI:
+  parsing failures before requests, streams, schemas, exit codes,
+  non-interactive execution, confirmation, previews, pagination, and partial
+  failures as relevant, using loopback mock servers for network paths. The
+  repository carries no test suite. Never exercise live mutations merely to
+  test CLI behavior.
+
+## Distribution and installation
+
+- `CLI-DIST-1` MUST publish as `@zakiaziz/hubspot-cli` on the npm registry. The
+  `bin` key is `hubspot`.
+- `CLI-DIST-2` MUST target Node. The executable starts with
+  `#!/usr/bin/env node`, `engines.node` names the oldest supported Node LTS
+  (currently `>=22`), and code uses only Node APIs, never `Bun.*` globals. Bun
+  runs the same file unchanged.
+- `CLI-DIST-3` MUST ship a prebuilt executable. `bin` points into `dist/`,
+  `dist/` stays out of Git, `prepack` runs the build, and `files` lists only
+  `dist`, `README.md`, `LICENSE`, and `docs`. The build bundles dependencies
+  with `bun build --target=node`.
+- `CLI-DIST-4` MUST declare `license`, `repository`, and
+  `"publishConfig": {"access": "public"}`.
+- `CLI-DIST-5` MUST document installation in the README as
+  `npm install -g @zakiaziz/hubspot-cli` and `bun add -g @zakiaziz/hubspot-cli`.
+  User-facing install steps never require `git clone` or a build.
+- `CLI-DIST-6` MUST install maintainer checkouts with `bun link` from the
+  checkout, which places the command in `~/.bun/bin`. Keep one install per
+  machine: no copies in nvm, `~/.local/bin`, or other global prefixes.
+- `CLI-DIST-7` MUST keep runtime selection out of the package. Maintainer
+  machines that run only Bun invoke the linked command as `bun <command path>`
+  from a shell profile script; the published file carries no launcher logic.
+  Cron jobs and systemd units load no profile, so they call
+  `/home/<user>/.bun/bin/bun /home/<user>/.bun/bin/hubspot` with absolute
+  paths.
+- `CLI-DIST-8` MUST keep the repository self-contained. Code, docs, and commit
+  messages describe only this tool: no references to any employer, to other
+  tools, or to an external standards file. Because the code and docs cite rule
+  IDs, the repository ships this file.
+- `CLI-DIST-9` MUST commit as `Zaki Aziz <vexity@gmail.com>`, set in this
+  repository with `git config user.email`, so a different global Git identity
+  never applies.
+- `CLI-DIST-10` MUST keep an unpublished tool at version `0.1.0` with no
+  migration guides. Versioning and `CLI-COMPAT-1` migration mappings start with
+  the first npm publish.
+- `CLI-DIST-11` MUST NOT add CI workflows (`.github/workflows` or similar).
+
+~~~bash
+npm install -g @zakiaziz/hubspot-cli    # Node users.
+bun add -g @zakiaziz/hubspot-cli        # Bun users.
+cd hubspot-cli && bun run build && bun link   # Maintainers.
+~~~
 
 ## Command specification template
 
-- `CLI-SPEC-1` MUST specify each new or changed command using these fields,
-  either in its command registry or a document. Reference shared policies
-  instead of duplicating them. Record exceptions with rule IDs and reasons.
+- `CLI-SPEC-1` MUST specify each new or changed command using these fields in
+  its command registry. Reference shared policies instead of duplicating them. Record exceptions with rule IDs and reasons.
 
 ~~~yaml
-command: tool articles update
-summary: Update article metadata and localized content.
+command: hubspot objects update
+summary: Update one record.
 arguments:
-  - name: article-id
+  - name: RECORD_ID
     type: string
     required: true
 options:
-  - name: title
+  - name: type
     type: string
-  - name: body-file
+    required: true
+  - name: file
     type: path
     stdin: true
-  - name: locale
-    type: string
-    default: selected profile locale
+    conflicts: [property]
+  - name: property
+    type: key-value
+    repeatable: true
+  - name: query
+    type: key-value
+    repeatable: true
 validation:
-  - Require at least one changed field.
-  - Reject unknown options and conflicting input sources.
+  - Require --property or --file, not both.
+  - Reject unknown options and duplicate scalar options.
 authentication:
-  profile: required
-  permissions: [article-write]
+  credential: required
+  profile: optional
 effects:
   kind: remote-mutation
   confirmation: required
   dry-run: supported
-  atomic: false
+  atomic: true
   sequence:
-    - Update metadata when supplied.
-    - Update localized content when supplied.
+    - Send one PATCH request with the supplied properties.
 output:
-  json-schema: schemas/articles-update-result.json
-  partial-result-schema: schemas/articles-update-partial.json
-  human: Article ID, locale, and changed fields.
+  human: Labeled fields of the updated record.
 pagination: not-applicable
 failures:
   - INVALID_ARGUMENT
   - AUTHENTICATION_FAILED
   - PERMISSION_DENIED
   - NOT_FOUND
-  - PARTIAL_FAILURE
+  - CONFLICT
+  - CONFIRMATION_REQUIRED
 retry:
   automatic: false
-  reason: Multiple writes can partially succeed.
+  reason: A repeated mutation may duplicate effects.
 examples:
-  - tool articles update 789 --title "Reset your password" --dry-run
-  - tool articles update 789 --title "Reset your password" --yes
+  - hubspot objects update 12345 --type deals --property amount=1000000 --dry-run
+  - hubspot objects update 12345 --type deals --property amount=1000000 --yes
 compatibility:
-  deprecated-aliases: [article edit]
-  removal-release: REQUIRED_BEFORE_SHIPPING_ALIAS
+  deprecated-aliases: []
 exceptions: []
 ~~~
 
@@ -362,3 +413,17 @@ exit-code assignments are deliberate choices, not universal Unix requirements.
 
 - [Command Line Interface Guidelines](https://clig.dev/)
 - [GNU argument syntax conventions](https://sourceware.org/glibc/manual/2.33/html_node/Argument-Syntax.html)
+
+## Tool notes
+
+- Transport: first-class commands send REST requests with a bearer token to the configured base URL, `https://api.hubapi.com` by default. The registry in `src/registry.ts` holds each path, query, and body, and `src/provider.ts` holds authentication, pagination, and error mapping. Shared parsing, help, output, errors, confirmation, configuration, and HTTP machinery (`CLI-ARCH-1`) is vendored in `src/core/` and never edited in this repository.
+- Scope: dynamic object types use `--type OBJECT_TYPE`, pipeline scope uses `--pipeline-id PIPELINE_ID`, and association commands take `--from-type`, `--from-id`, `--to-type`, and `--to-id`. Every scope option is required (`CLI-GRAM-6`).
+- Identifiers: positional IDs and scope options are rejected when empty, `.`, `..`, or when they contain control characters, and each one is passed through `encodeURIComponent` as a single path segment. `api request` rejects `.` and `..` path segments.
+- Input: `--file PATH` reads the complete JSON input, and `-` reads stdin (`CLI-IN-3`). The tool never expands `@filename`. `--file` conflicts with `--property` (`CLI-IN-4`). `--property NAME=VALUE` (`objects create` and `update`) is repeatable and sets literal string values, including an explicit empty string. HubSpot can treat an empty string as clearing the property (`CLI-IN-6`); omitted properties keep their values. `--query KEY=VALUE` is repeatable and sends exact HubSpot query parameter names. Paginated commands reject `limit` and `after`; use `--page-size` and `--cursor`.
+- Dates: this tool has no date options. Query parameters and request bodies keep HubSpot's provider contract (`CLI-IN-7`).
+- Updates: `objects update`, `properties update`, `pipelines update`, `stages update`, and `schemas update` preserve omitted fields.
+- API version: first-class commands use the HubSpot API version from `HUBSPOT_API_VERSION`, the selected profile, or `config.json`, and `2026-03` when none is set. `--api-version` only stores the value in a profile on `setup` and `profiles create|update`. The version is an endpoint field, so it appears on `setup` and `profiles`, as an environment variable, and as a config key.
+- Cursors: HubSpot `paging.next.after` values pass through unchanged as strings. A numeric `after` is read as a decimal string.
+- Partial results: a repeated cursor or an oversized page on the first page is `INVALID_RESPONSE`. On a later page, the error is `PARTIAL_FAILURE` with `details.cause` set to `INVALID_RESPONSE` and `partial` holding the completed pages. Every first-class mutation sends one request and is atomic from the CLI's point of view; the tool starts no asynchronous jobs (`CLI-SAFE-8`).
+- Secret handling: the access token is replaced with `[redacted]` in HubSpot messages, codes, and request IDs before anything prints. Base URL and `PATH` errors echo the received value with only URL credentials redacted.
+- Identity: `auth verify` sends `GET /account-info/VERSION/details`, where `VERSION` is the configured API version. Success proves that HubSpot accepted the access token for that request and identifies the account. It does not prove complete permission coverage (`CLI-CFG-6`).

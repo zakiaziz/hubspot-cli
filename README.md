@@ -1,265 +1,298 @@
-# HubSpot CLI
+# hubspot-cli
 
-A command-line client for HubSpot CRM. This unofficial package owns the `hubspot` executable.
+Command-line interface for the HubSpot CRM API. It reads and changes CRM records, properties, pipelines, stages, associations, owners, and custom object schemas, and sends raw API requests. It is not an official HubSpot product.
 
 ## Install
 
-Install from npm with Node 22 or newer, or with Bun:
+Requires Node.js 22 or newer.
 
 ```bash
 npm install -g @zakiaziz/hubspot-cli
 bun add -g @zakiaziz/hubspot-cli
+cd hubspot-cli && bun run build && bun link
 ```
 
-To work on the CLI, build and link a checkout with `bun install`, `bun run build`, and `bun link`.
-
-## Output
-
-Operational commands write one compact JSON document to stdout by default, even
-in a terminal. First-class commands return `{"data":...,"meta":...}`; collections
-use an array in `data`. Provider fields inside results are preserved. Raw
-`api request` returns the provider response without the envelope.
+## Quick start
 
 ```bash
-hubspot objects list --type contacts
-hubspot objects list --type contacts --format pretty
-hubspot objects list --type contacts --format human
-hubspot objects list --type contacts --format pretty --color never
+hubspot setup
+# List contacts as a table.
+hubspot objects list --type contacts --page-size 25 --format human
+# Get one deal record.
+hubspot objects get 12345 --type deals
+# Preview a deal update without sending it.
+hubspot objects update 12345 --type deals --property amount=1000000 --dry-run
 ```
 
-`--format pretty` uses two-space indentation and GitHub Dark syntax colors.
-Automatic color applies only to terminal streams without a nonempty `NO_COLOR`.
-`--color always` explicitly overrides that policy for pretty/human presentation;
-`--format json` is always uncolored. Human output uses tables and labeled fields.
-Errors follow the selected format on stderr. Progress and diagnostics never
-appear in result stdout. Help, version, and completion output are text.
+## Commands
 
-## Configuration
+### account
+
+| Command | Description | Options |
+| --- | --- | --- |
+| hubspot account get | Get account details. | --query KEY=VALUE |
+| hubspot account usage get | Get private-app daily API usage. | --query KEY=VALUE |
+
+### association-labels
+
+| Command | Description | Options |
+| --- | --- | --- |
+| hubspot association-labels list | List association labels between two object types. | --from-type OBJECT_TYPE, --to-type OBJECT_TYPE, --query KEY=VALUE |
+
+### associations
+
+| Command | Description | Options |
+| --- | --- | --- |
+| hubspot associations list | List a record's associations to one object type. | --from-type OBJECT_TYPE, --from-id RECORD_ID, --to-type OBJECT_TYPE, --query KEY=VALUE, --page-size N, --cursor TOKEN, --all, --max-items N |
+| hubspot associations create | Create labeled associations between two records. | --from-type OBJECT_TYPE, --from-id RECORD_ID, --to-type OBJECT_TYPE, --to-id RECORD_ID, --file PATH, --query KEY=VALUE, --yes, --dry-run |
+| hubspot associations delete | Delete every association between two records. | --from-type OBJECT_TYPE, --from-id RECORD_ID, --to-type OBJECT_TYPE, --to-id RECORD_ID, --query KEY=VALUE, --yes, --dry-run |
+| hubspot associations create-default | Create the default association between two records. | --from-type OBJECT_TYPE, --from-id RECORD_ID, --to-type OBJECT_TYPE, --to-id RECORD_ID, --query KEY=VALUE, --yes, --dry-run |
+
+### objects
+
+| Command | Description | Options |
+| --- | --- | --- |
+| hubspot objects list | List records of one object type. | --type OBJECT_TYPE, --query KEY=VALUE, --page-size N, --cursor TOKEN, --all, --max-items N |
+| hubspot objects get RECORD_ID | Get one record. | --type OBJECT_TYPE, --query KEY=VALUE |
+| hubspot objects create | Create one record. | --type OBJECT_TYPE, --file PATH, --property NAME=VALUE, --query KEY=VALUE, --yes, --dry-run |
+| hubspot objects update RECORD_ID | Update one record. | --type OBJECT_TYPE, --file PATH, --property NAME=VALUE, --query KEY=VALUE, --yes, --dry-run |
+| hubspot objects archive RECORD_ID | Archive one record. | --type OBJECT_TYPE, --query KEY=VALUE, --yes, --dry-run |
+
+### owners
+
+| Command | Description | Options |
+| --- | --- | --- |
+| hubspot owners list | List owners. | --query KEY=VALUE, --page-size N, --cursor TOKEN, --all, --max-items N |
+| hubspot owners get OWNER_ID | Get one owner. | --query KEY=VALUE |
+
+### pipelines
+
+| Command | Description | Options |
+| --- | --- | --- |
+| hubspot pipelines list | List pipelines of one object type. | --type OBJECT_TYPE, --query KEY=VALUE |
+| hubspot pipelines get PIPELINE_ID | Get one pipeline. | --type OBJECT_TYPE, --query KEY=VALUE |
+| hubspot pipelines create | Create a pipeline. | --type OBJECT_TYPE, --file PATH, --query KEY=VALUE, --yes, --dry-run |
+| hubspot pipelines update PIPELINE_ID | Update a pipeline. | --type OBJECT_TYPE, --file PATH, --query KEY=VALUE, --yes, --dry-run |
+| hubspot pipelines replace PIPELINE_ID | Replace a pipeline. | --type OBJECT_TYPE, --file PATH, --query KEY=VALUE, --yes, --dry-run |
+| hubspot pipelines delete PIPELINE_ID | Delete a pipeline. | --type OBJECT_TYPE, --query KEY=VALUE, --yes, --dry-run |
+
+### properties
+
+| Command | Description | Options |
+| --- | --- | --- |
+| hubspot properties list | List property definitions of one object type. | --type OBJECT_TYPE, --query KEY=VALUE |
+| hubspot properties get PROPERTY_NAME | Get one property definition. | --type OBJECT_TYPE, --query KEY=VALUE |
+| hubspot properties create | Create a property definition. | --type OBJECT_TYPE, --file PATH, --query KEY=VALUE, --yes, --dry-run |
+| hubspot properties update PROPERTY_NAME | Update a property definition. | --type OBJECT_TYPE, --file PATH, --query KEY=VALUE, --yes, --dry-run |
+| hubspot properties archive PROPERTY_NAME | Archive a property definition. | --type OBJECT_TYPE, --query KEY=VALUE, --yes, --dry-run |
+
+### schemas
+
+| Command | Description | Options |
+| --- | --- | --- |
+| hubspot schemas list | List custom object schemas. | --query KEY=VALUE |
+| hubspot schemas get OBJECT_TYPE | Get one custom object schema. | --query KEY=VALUE |
+| hubspot schemas create | Create a custom object schema. | --file PATH, --query KEY=VALUE, --yes, --dry-run |
+| hubspot schemas update OBJECT_TYPE | Update a custom object schema. | --file PATH, --query KEY=VALUE, --yes, --dry-run |
+| hubspot schemas delete OBJECT_TYPE | Delete a custom object schema. | --query KEY=VALUE, --yes, --dry-run |
+
+### stages
+
+| Command | Description | Options |
+| --- | --- | --- |
+| hubspot stages list | List the stages of one pipeline. | --type OBJECT_TYPE, --pipeline-id PIPELINE_ID, --query KEY=VALUE |
+| hubspot stages get STAGE_ID | Get one pipeline stage. | --type OBJECT_TYPE, --pipeline-id PIPELINE_ID, --query KEY=VALUE |
+| hubspot stages create | Create a pipeline stage. | --type OBJECT_TYPE, --pipeline-id PIPELINE_ID, --file PATH, --query KEY=VALUE, --yes, --dry-run |
+| hubspot stages update STAGE_ID | Update a pipeline stage. | --type OBJECT_TYPE, --pipeline-id PIPELINE_ID, --file PATH, --query KEY=VALUE, --yes, --dry-run |
+| hubspot stages replace STAGE_ID | Replace a pipeline stage. | --type OBJECT_TYPE, --pipeline-id PIPELINE_ID, --file PATH, --query KEY=VALUE, --yes, --dry-run |
+| hubspot stages delete STAGE_ID | Delete a pipeline stage. | --type OBJECT_TYPE, --pipeline-id PIPELINE_ID, --query KEY=VALUE, --yes, --dry-run |
+
+### setup
+
+| Command | Description | Options |
+| --- | --- | --- |
+| hubspot setup [NAME] | Create and activate a profile. | --access-token-file PATH, --base-url URL, --api-version API_VERSION, --from-env |
+
+### profiles
+
+| Command | Description | Options |
+| --- | --- | --- |
+| hubspot profiles list | List saved profiles. | None |
+| hubspot profiles get NAME | Get one saved profile with secrets redacted. | None |
+| hubspot profiles create NAME | Create a profile without activating it. | --access-token-file PATH, --base-url URL, --api-version API_VERSION |
+| hubspot profiles update NAME | Update fields of a profile. | --access-token-file PATH, --base-url URL, --api-version API_VERSION, --clear-base-url, --clear-api-version |
+| hubspot profiles delete NAME | Delete a profile. | None |
+| hubspot profiles use NAME | Make a profile the active profile. | None |
+
+### config
+
+| Command | Description | Options |
+| --- | --- | --- |
+| hubspot config list | List every configuration key. | None |
+| hubspot config get KEY | Get one configuration value. | None |
+| hubspot config set KEY VALUE | Set one configuration value. | None |
+| hubspot config unset KEY | Remove one configuration value. | None |
+| hubspot config path | Get the configuration paths. | None |
+
+### auth
+
+| Command | Description | Options |
+| --- | --- | --- |
+| hubspot auth verify | Verify the access token. | None |
+
+### api
+
+| Command | Description | Options |
+| --- | --- | --- |
+| hubspot api request METHOD PATH | Send a raw API request. | --query KEY=VALUE, --file PATH, --yes, --dry-run |
+
+### completions
+
+| Command | Description | Options |
+| --- | --- | --- |
+| hubspot completions SHELL | Print a shell completion script. | None |
+
+## Global options
+
+| Option | Description |
+| --- | --- |
+| -h, --help | Show help. Uses no credentials or network. |
+| --version | Print the executable name and version. |
+| --profile NAME | Select a saved profile. |
+| --format FORMAT | Output format. Allowed: json, pretty, human. Default: json. |
+| --color WHEN | Color for pretty and human output. Allowed: auto, always, never. Default: auto. |
+| -q, --quiet | Suppress progress and notices. Results and errors still print. |
+| -v, --verbose | Print redacted diagnostics to stderr. |
+| --no-input | Never prompt. Fail when input is missing. |
+| --timeout DURATION | Per-request timeout in ms, s, or m, from 1ms to 10m. Default: 30s. |
+
+Network commands (the resource commands, `auth verify`, and `api request`) accept every option except `--version`. Local commands (`setup`, `profiles`, and `config`) accept `--help`, `--format`, `--color`, `--quiet`, `--verbose`, and `--no-input`. `completions` accepts only `--help`. With no command, only `--help`, `--version`, `--verbose`, and `--quiet` apply, and `--version` with a command word fails.
+
+## Authentication
+
+Create a HubSpot private app, grant it the scopes your commands need, and copy its access token.
 
 ```bash
-export HUBSPOT_ACCESS_TOKEN="your-token"
-hubspot setup work --from-env
+hubspot setup work --access-token-file ./hubspot-access-token.txt
 hubspot auth verify
 ```
 
-Setup is noninteractive and uses the same profile storage as `profiles create`
-and `profiles use`. Existing profile names require `profiles update`.
-Credentials resolve from explicit options, `HUBSPOT_ACCESS_TOKEN`, then the
-selected profile. Profile selection uses `--profile`, `HUBSPOT_PROFILE`, then
-the active profile. An explicitly missing profile fails even when an environment
-token is present.
+`setup [NAME]` creates a profile (default name: `default`) and makes it the active profile. It fails when the profile exists. If activation fails after the profile is written, the profile stays saved and `setup` exits 8 with `PARTIAL_FAILURE`. In a terminal without `--no-input`, `setup` prompts for a missing access token with hidden input. Secrets are never command-line values: pass `--access-token-file PATH` (`-` reads stdin), set `HUBSPOT_ACCESS_TOKEN`, or enter the token at the prompt. `setup --from-env` copies `HUBSPOT_ACCESS_TOKEN`, `HUBSPOT_BASE_URL`, and `HUBSPOT_API_VERSION` into the profile and cannot be combined with `--access-token-file`, `--base-url`, or `--api-version`.
 
-Configuration lives in `$XDG_CONFIG_HOME/hubspot` when that variable is absolute,
-otherwise `~/.config/hubspot`. Credential files use mode `0600`; tool directories
-use `0700`. Inspection redacts credentials. Prefer environment credentials over
-token options that can appear in shell history.
+| Variable | Purpose |
+| --- | --- |
+| `HUBSPOT_PROFILE` | Select a saved profile. |
+| `HUBSPOT_ACCESS_TOKEN` | HubSpot private app access token (bearer token). |
+| `HUBSPOT_BASE_URL` | API base URL. Default: `https://api.hubapi.com`. |
+| `HUBSPOT_API_VERSION` | API version of first-class commands, as `YYYY-MM`. Default: `2026-03`. |
+| `XDG_CONFIG_HOME` | Configuration root when it is an absolute path. Otherwise `~/.config`. |
+| `NO_COLOR` | Disables color with `--color auto` when set and nonempty. |
+| `CI` | Disables prompts when nonempty and not `0` or `false`. |
 
-Non-secret settings resolve from explicit options, `HUBSPOT_BASE_URL` and
-`HUBSPOT_API_VERSION`, profile values, then configuration/defaults. Defaults are
-`https://api.hubapi.com` and API version `2026-03`. OAuth tokens are not refreshed.
-`auth verify` checks account-detail access, not every endpoint permission.
+A `HUBSPOT_` variable that is set but empty, a malformed `HUBSPOT_PROFILE`, and an invalid `HUBSPOT_BASE_URL` or `HUBSPOT_API_VERSION` fail with `CONFIGURATION_ERROR` and name the variable. None of them falls through to the next source.
 
-## Input and confirmation
+Precedence:
 
-Commands use plural resources and explicit actions. The primary ID is positional;
-scope uses `--type`, `--pipeline-id`, or association scope options. Unknown,
-duplicate scalar, irrelevant, and conflicting flags fail before requests.
-Options accept both `--name value` and `--name=value`; `--` ends option parsing.
+1. Profile selection: `--profile`, `HUBSPOT_PROFILE`, then `activeProfile` in `config.json`. A selected or active profile that does not exist fails with `CONFIGURATION_ERROR`, with no fallback.
+2. Credentials: `HUBSPOT_ACCESS_TOKEN`, then the selected profile.
+3. Base URL: `HUBSPOT_BASE_URL`, the selected profile, `baseUrl` in `config.json`, then the default.
+4. API version: `HUBSPOT_API_VERSION`, the selected profile, `apiVersion` in `config.json`, then the default.
+
+`hubspot auth verify` sends `GET /account-info/VERSION/details`, where `VERSION` is the configured API version (default `2026-03`). Success proves that HubSpot accepted the access token for that request and returns the account details as `identity`. It does not prove complete permission coverage. The tool does not refresh OAuth tokens.
+
+## Output and errors
+
+The default output format is `json`: one compact, uncolored line on stdout with the envelope `{"data":...,"meta":{...}}`. `--format pretty` prints the same document indented, with syntax highlighting when color applies. `--format human` prints tables for collections and labeled fields for one resource. Errors go to stderr in the selected format. Help, `--version`, and `completions` print plain text.
+
+`data` is an object for one resource, an array for a collection, or `null` when HubSpot returns no content, and keeps HubSpot's field names. `meta` is always present.
+
+| `meta` key | When |
+| --- | --- |
+| `next_cursor` | Paginated collection reads. A string, or `null` when no page remains. |
+| `has_more` | Paginated collection reads. |
+| `provider` | Other collection fields that HubSpot returns, such as `total`. |
+| `dry_run`, `validation` | Dry-run previews. `validation` is `local`. |
+
+Errors print one document on stderr, for example `{"error":{"code":"RATE_LIMITED","message":"...","hint":"...","retryable":true,"provider":{"status":429}}}`. Optional keys are `hint`, `outcome` (`unknown` when a mutation may have applied), `provider` (`status`, `code`, `request_id`, `retry_after_seconds`), `details`, and `partial`. `--format human` prints `Error [CODE]: message` and `Hint: ...`.
+
+| Exit | Error codes |
+| --- | --- |
+| 0 | Success, including empty collections. |
+| 1 | `UNEXPECTED_ERROR`, `PROVIDER_ERROR`, `INVALID_RESPONSE`, `UNSUPPORTED_RESPONSE` |
+| 2 | `INVALID_ARGUMENT`, `INVALID_REQUEST` |
+| 3 | `CONFIGURATION_ERROR`, `AUTHENTICATION_REQUIRED`, `AUTHENTICATION_FAILED` |
+| 4 | `PERMISSION_DENIED` |
+| 5 | `NOT_FOUND` |
+| 6 | `CONFLICT` |
+| 7 | `RATE_LIMITED`, `TRANSIENT_FAILURE` |
+| 8 | `PARTIAL_FAILURE` |
+| 9 | `CONFIRMATION_REQUIRED`, `CONFIRMATION_DECLINED` |
+| 130 | `INTERRUPTED` |
+
+IDs are opaque strings. Options accept `--name value` and `--name=value`, and `--` ends options. Unknown commands, options, extra arguments, invalid values, and conflicting options fail with exit code 2 before any request. This tool has no date options. `--query KEY=VALUE` sends exact HubSpot query parameter names, and `--property NAME=VALUE` sets literal string values. An empty `VALUE` sends an empty string that HubSpot can treat as clearing the property, and omitted properties keep their values. `--file PATH` sends the file as the request body, which is HubSpot's documented body for that endpoint. `replace` commands send the complete resource, and `update` commands send only the fields in the file.
+
+Mutations (every `create`, `update`, `replace`, `archive`, and `delete` command, and `api request` with `POST`, `PUT`, `PATCH`, or `DELETE`) need confirmation. The CLI validates arguments first, then resolves credentials (exit 3 when missing), then asks for confirmation. In a terminal, it shows the profile, operation, request, and effect, then prompts. `--yes` confirms without a prompt. With `--no-input`, a non-terminal stdin or stderr, or CI mode, a missing confirmation exits 9. Ctrl-C or end of input at a prompt exits 130 with `INTERRUPTED`. `--dry-run` prints a redacted preview of the request, with headers in the order `Authorization`, `Accept`, `Content-Type`, and sends nothing. It needs no credentials. Preview success does not guarantee that the request succeeds.
+
+Reads make up to 3 attempts on HTTP 429, 500, 502, 503, 504, network errors, and timeouts, waiting 250 ms, then 500 ms, or the `Retry-After` value up to 10 seconds. A `Retry-After` above 10 seconds is not waited on: the command fails with `RATE_LIMITED` and `provider.retry_after_seconds`. Mutations make one attempt. `--timeout` applies to each attempt. `--verbose` writes redacted request, response, and retry diagnostics to stderr.
+
+## Pagination
+
+Paginated commands fetch one page by default. `objects list` accepts `--page-size` up to 100. `owners list` and `associations list` accept up to 500. The default is 100 for all three. The CLI keeps HubSpot's order, which HubSpot does not document, and never sorts. HubSpot cursors (`paging.next.after`) pass through unchanged as strings, and a numeric cursor is read as a decimal string. `--query limit=N` and `--query after=TOKEN` are rejected on these commands; use `--page-size` and `--cursor`.
+
+`--all` follows every cursor. `--max-items N` (with `--all`) shrinks the last request so the read stops on a page boundary, and `meta.next_cursor` resumes it. `--cursor TOKEN` resumes from a previous `meta.next_cursor`, with or without `--all`.
 
 ```bash
-hubspot objects update 123 --type deals --property amount=1000000 --dry-run
-hubspot objects update 123 --type deals --property amount=1000000 --yes
-hubspot objects batch-get --type contacts --file ids.json
-hubspot api request PATCH /crm/objects/2026-03/contacts/123 --file request.json --yes
+hubspot objects list --type contacts --all --max-items 500 > contacts.json
+hubspot objects list --type contacts --all --cursor "$(jq -r '.meta.next_cursor' contacts.json)"
 ```
 
-`--file PATH` reads a complete JSON body; `--file -` reads stdin. It conflicts
-with `--set` and `--property`. `--property NAME=VALUE` preserves strings,
-including empty strings. `--set PATH=VALUE` parses booleans, numbers, null, arrays,
-and objects. Omitted fields remain unchanged; null and empty strings remain
-distinct and must be supported by the provider field. Do not assume empty means
-clear for every provider property. `--query NAME=VALUE` sends exact provider
-query names and preserves repeated parameters. No implicit @file expansion occurs.
+A repeated cursor or an oversized page on the first page fails with `INVALID_RESPONSE` and exit 1. A failure on a later page exits 8 with `PARTIAL_FAILURE`. The items read so far are in `error.partial.data`, `error.partial.next_cursor` points at the first unread item, and `error.details.cause` names the underlying error code, such as `INVALID_RESPONSE`. The property, pipeline, stage, schema, and association label lists are unpaginated: HubSpot returns the full list in one response, and `meta` is empty.
 
-Search pagination flags can augment an input body only when it lacks the same
-`after` or `limit` field; conflicts fail. Batch input requires an explicit,
-nonempty `inputs` array. Destructive batches never infer targets from `--all`.
-
-Remote mutations prompt with profile, target, and effects in a terminal unless
-`--yes` is supplied. `--no-input`, nonterminal stdin, stdin request content, and
-CI mode prohibit prompts; missing confirmation exits `9`. CI mode means a
-nonempty `CI` other than `0` or `false`, ignoring case. `--dry-run` validates
-locally and prints a redacted plan without requests or writes. It is not a
-guarantee that a later mutation succeeds. `--force` is not supported.
-
-First-class POST searches and batch reads need no confirmation. Raw non-GET
-requests require confirmation. Raw requests accept JSON bodies and JSON/text
-responses; multipart and binary content are unsupported. Paths cannot change
-origin, and redirects are not followed.
-
-## Pagination and failures
-
-Paginated commands fetch one page by default. `--all` traverses continuation;
-`--max-items N` requires `--all` and bounds total output. Without `--page-size`,
-each request is capped at 100 items. Page sizes shrink to the remaining capacity, preserving `meta.next_cursor` without discarding unread
-items. Resume with `--cursor`. `meta.has_more` describes provider continuation,
-not an assurance that the service exposes every historical record.
+## Raw API access
 
 ```bash
-hubspot objects list --type contacts --all --page-size 50 --max-items 100
-hubspot objects list --type contacts --cursor CURSOR
+hubspot api request GET /crm/objects/2026-03/contacts --query limit=5
+hubspot api request PATCH /crm/objects/2026-03/contacts/12345 --file contact.json --dry-run
 ```
 
-Unsupported pagination flags fail. Provider-specific limits and search caps
-still apply. Repeated cursors and invalid page shapes fail rather than looping.
-Automatic retries are deliberately disabled; see the documented `CLI-RETRY-1`
-exception in `docs/commands.json`. A failed mutation can have an unknown outcome.
-Batch partial failures exit `8` and include provider results/errors under
-`error.partial`; they do not imply rollback. An asynchronous provider response
-retains its operation ID/status without polling.
+Methods: `GET`, `HEAD`, `OPTIONS`, `POST`, `PUT`, `PATCH`, `DELETE`. `PATH` starts with a single `/` and has no scheme, host, query string, fragment, whitespace, or `.` and `..` segments. Add query parameters with the repeatable `--query KEY=VALUE`. `--file PATH` sends a JSON body as `application/json` (`-` reads stdin). `--file`, `--yes`, and `--dry-run` are rejected on `GET`, `HEAD`, and `OPTIONS`. The CLI sends the selected profile's bearer token only to the configured API origin. JSON responses print as parsed, other text prints as a JSON string, an empty body prints `null`, and binary responses fail with `UNSUPPORTED_RESPONSE`. Non-2xx responses use the same error mapping as other commands. First-class commands use the configured HubSpot API version (default `2026-03`) in their paths, and raw paths carry whatever version you write.
 
-| Exit | Meaning |
-| --- | --- |
-| 0 | Success, including empty collections |
-| 1 | Unexpected or provider failure not otherwise classified |
-| 2 | Invalid command or input |
-| 3 | Configuration or authentication failure |
-| 4 | Permission denied |
-| 5 | Missing resource |
-| 6 | Conflict or unmet precondition |
-| 7 | Transient service/network failure |
-| 8 | Partial completion |
-| 9 | Confirmation required or declined |
-| 130 | Interrupted |
+## Configuration
 
-Errors include a stable code, actionable message, and available provider status,
-code, and request ID. JSON mode emits one structured error document on stderr.
+Files live in `$XDG_CONFIG_HOME/hubspot` when `XDG_CONFIG_HOME` is an absolute path, and in `~/.config/hubspot` otherwise.
 
-## Command reference
+```text
+hubspot/
+  config.json            {"activeProfile": "work", "baseUrl": "https://...", "apiVersion": "2026-03"}
+  profiles/NAME.json     {"accessToken": "...", "baseUrl": "https://...", "apiVersion": "2026-03"}
+```
 
-Command help and completions use the same registry as this reference. Run a
-command with `--help` for its scoped options and examples.
+Keys are camelCase. Files use mode `0600`, directories use mode `0700`, and writes are atomic: the CLI creates a temporary file exclusively with mode `0600` in the same directory, then renames it. Reads reject unknown keys and non-object JSON with `CONFIGURATION_ERROR`. Profile names match `^[A-Za-z0-9._-]+$` and are not `.` or `..`. `config.json` keys: `activeProfile` (read-only through `config`; change it with `profiles use`), `baseUrl`, and `apiVersion`. Profile fields: `accessToken`, `baseUrl`, and `apiVersion`. Secrets are redacted in previews, diagnostics, `profiles get`, and `config list`.
 
-| Command | Description |
-| --- | --- |
-| `hubspot setup [profile] [--from-env]` | Create and activate a profile; existing profiles require profiles update. |
-| `hubspot profiles list` | List saved profile names and the active profile. |
-| `hubspot profiles get <name>` | Read a profile with secrets redacted. |
-| `hubspot profiles create <name>` | Create a saved profile. |
-| `hubspot profiles update <name>` | Update supplied profile fields. |
-| `hubspot profiles delete <name>` | Delete a local profile and clear its active selection. |
-| `hubspot profiles use <name>` | Select a saved profile. |
-| `hubspot config list` | Read global configuration. |
-| `hubspot config path` | Print configuration paths. |
-| `hubspot config get <key>` | Read a configuration value. |
-| `hubspot config set <key> <value>` | Set baseUrl or apiVersion. |
-| `hubspot config unset <key>` | Remove baseUrl or apiVersion. |
-| `hubspot auth verify` | Verify access to account details; this does not prove all endpoint permissions. |
-| `hubspot api request <GET\|POST\|PUT\|PATCH\|DELETE> <path>` | Send a raw same-origin JSON API request. |
-| `hubspot completions bash` | Print Bash completion code. |
-| `hubspot completions zsh` | Print Zsh completion code. |
-| `hubspot completions fish` | Print Fish completion code. |
-| `hubspot objects list --type <type>` | List records for any standard or custom object type. |
-| `hubspot objects get <recordId> --type <type>` | Get one record. |
-| `hubspot objects search --type <type>` | Search records. |
-| `hubspot objects create --type <type>` | Create one record. |
-| `hubspot objects update <recordId> --type <type>` | Update one record. |
-| `hubspot objects archive <recordId> --type <type>` | Move one record to HubSpot's recycling bin. |
-| `hubspot objects batch-get --type <type>` | Read a batch of records. |
-| `hubspot objects batch-create --type <type>` | Create a batch of records. |
-| `hubspot objects batch-update --type <type>` | Update a batch of records. |
-| `hubspot objects batch-upsert --type <type>` | Create or update a batch of records. |
-| `hubspot objects batch-archive --type <type>` | Archive a batch of records. |
-| `hubspot properties list --type <type>` | List property definitions for an object type. |
-| `hubspot properties get <propertyName> --type <type>` | Get one property definition. |
-| `hubspot properties create --type <type>` | Create a property definition. |
-| `hubspot properties update <propertyName> --type <type>` | Update a property definition. |
-| `hubspot properties archive <propertyName> --type <type>` | Archive a property definition. |
-| `hubspot owners list` | List owners. |
-| `hubspot owners get <ownerId>` | Get one owner. |
-| `hubspot pipelines list --type <type>` | List pipelines for an object type. |
-| `hubspot pipelines get <pipelineId> --type <type>` | Get one pipeline. |
-| `hubspot pipelines create --type <type>` | Create a pipeline. |
-| `hubspot pipelines replace <pipelineId> --type <type>` | Replace a pipeline. |
-| `hubspot pipelines update <pipelineId> --type <type>` | Update a pipeline. |
-| `hubspot pipelines delete <pipelineId> --type <type>` | Delete a pipeline. |
-| `hubspot stages list --type <type> --pipeline-id <pipeline-id>` | List pipeline stages. |
-| `hubspot stages get <stageId> --type <type> --pipeline-id <pipeline-id>` | Get one pipeline stage. |
-| `hubspot stages create --type <type> --pipeline-id <pipeline-id>` | Create a pipeline stage. |
-| `hubspot stages replace <stageId> --type <type> --pipeline-id <pipeline-id>` | Replace a pipeline stage. |
-| `hubspot stages update <stageId> --type <type> --pipeline-id <pipeline-id>` | Update a pipeline stage. |
-| `hubspot stages delete <stageId> --type <type> --pipeline-id <pipeline-id>` | Delete a pipeline stage. |
-| `hubspot associations list --from-type <from-type> --from-id <from-id> --to-type <to-type>` | List a record's associations to one object type. |
-| `hubspot associations create-default --from-type <from-type> --from-id <from-id> --to-type <to-type> --to-id <to-id>` | Create a default association. |
-| `hubspot associations create --from-type <from-type> --from-id <from-id> --to-type <to-type> --to-id <to-id>` | Create labeled associations. |
-| `hubspot associations delete --from-type <from-type> --from-id <from-id> --to-type <to-type> --to-id <to-id>` | Remove every association between two records. |
-| `hubspot associations batch-get --from-type <from-type> --to-type <to-type>` | Read associations for a batch of records. |
-| `hubspot associations batch-create --from-type <from-type> --to-type <to-type>` | Create labeled associations for record pairs. |
-| `hubspot associations batch-create-default --from-type <from-type> --to-type <to-type>` | Create default associations for record pairs. |
-| `hubspot associations batch-delete --from-type <from-type> --to-type <to-type>` | Remove associations for record pairs. |
-| `hubspot association-labels list --from-type <from-type> --to-type <to-type>` | List association labels. |
-| `hubspot schemas list` | List custom object schemas. |
-| `hubspot schemas get <objectType>` | Get one custom object schema. |
-| `hubspot schemas create` | Create a custom object schema. |
-| `hubspot schemas update <objectType>` | Update a custom object schema. |
-| `hubspot schemas delete <objectType>` | Delete a custom object schema. |
-| `hubspot account get` | Get account details. |
-| `hubspot account usage get` | Get private-app daily API usage. |
+An API version, from `--api-version`, `config set apiVersion`, `HUBSPOT_API_VERSION`, or a stored file, matches `YYYY-MM`.
 
-## Options
+A base URL, from `--base-url`, `config set baseUrl`, `HUBSPOT_BASE_URL`, or a stored file, must be an `https` URL (`http` only for `localhost`, `127.0.0.1`, or `::1`) with no credentials, query string, fragment, or path. Values are stored unchanged, and requests go to the URL's origin.
 
-Only options shown by the selected command are accepted.
+Completion scripts come from `hubspot completions bash|zsh|fish` and read only the command registry and local profile names. They complete commands, options, enum values (after `--OPT ` and `--OPT=`), `METHOD`, `SHELL`, and profile names (after `--profile` and for the `NAME` argument of `profiles get|update|delete|use`). They offer nothing after `--` or after an option that takes a free-form value.
 
-| Option | Contract |
-| --- | --- |
-| `--profile` | NAME; saved profile, otherwise HUBSPOT_PROFILE or active profile |
-| `--format` | json\|pretty\|human; default json, compact and uncolored |
-| `--color` | auto\|always\|never; default auto, presentation formats only |
-| `--quiet` | Alias -q. Suppress notices; preserve results and errors |
-| `--verbose` | Alias -v. Redacted request diagnostics on stderr |
-| `--no-input` | Never prompt; automatically enforced in CI or nonterminal input |
-| `--timeout` | DURATION; default 30s, positive ms/s/m, maximum 2147483647ms |
-| `--access-token` | TOKEN; prefer HUBSPOT_ACCESS_TOKEN to avoid shell history |
-| `--base-url` | URL; default https://api.hubapi.com, no cross-origin paths or redirects |
-| `--api-version` | YYYY-MM; default 2026-03 |
-| `--type` | OBJECT_TYPE; required, standard name or custom type ID |
-| `--pipeline-id` | PIPELINE_ID; required pipeline scope |
-| `--from-type` | OBJECT_TYPE; required source type |
-| `--from-id` | ID; required source record |
-| `--to-type` | OBJECT_TYPE; required destination type |
-| `--to-id` | ID; required destination record |
-| `--file` | PATH; complete provider JSON body; - reads stdin; conflicts with --set/--property |
-| `--set` | PATH=VALUE; repeatable typed JSON fields; null and empty strings remain distinct |
-| `--property` | NAME=VALUE; repeatable CRM strings, including an explicit empty string |
-| `--query` | NAME=VALUE; repeatable exact provider query parameters |
-| `--all` | Follow all pages; default one page |
-| `--cursor` | TOKEN; opaque continuation from meta.next_cursor |
-| `--page-size` | N; positive provider page size; defaults to an implicit bounded size of 100 |
-| `--max-items` | N; total bound; requires --all; continuation remains resumable |
-| `--yes` | Supply remote mutation confirmation |
-| `--dry-run` | Local validation and redacted preview; no requests or writes |
-| `--from-env` | Read setup values from HUBSPOT_* environment variables |
+## Exceptions
+
+| Rule | Decision | Reason |
+| --- | --- | --- |
+| `CLI-GRAM-4` | `associations create-default` | HubSpot distinguishes the default association from labeled associations. |
+| `CLI-GRAM-6` | `associations` commands take every ID as an option | An association joins two records and an object type pair, so no single primary target exists. |
 
 ## Development
 
-Use the existing Bun toolchain:
-
 ```bash
-bun --bun run check
-bun test
-bun --bun run build
+bun run build
+bun run check
+bun link
 ```
 
-Requires Node 22 or newer, or Bun. No runtime dependencies. Package releases are separate
-from source changes. The command specifications and output schemas live in
-`docs/commands.json`. Rule IDs such as `CLI-RETRY-1` refer to
-`docs/cli-conventions.md`.
+`src/core/` is vendored from cli-core and is never edited here. Change cli-core and run its sync script instead. `docs/cli-conventions.md` restates the command-line contract this tool follows.
 
 ## API references
 
 - [HubSpot API documentation](https://developers.hubspot.com/docs/api-reference/overview)
 - [HubSpot authentication](https://developers.hubspot.com/docs/apps/developer-platform/build-apps/authentication/overview)
-
-### Date filters
-
-This CLI has no normalized date-filter options. Raw query parameters and search-body filters retain HubSpot's provider contract. CRM date/datetime property filters use the provider's documented representations, commonly Unix epoch milliseconds supplied as strings. The CLI does not interpret date-only strings or assign them a timezone. Search comparison operators such as GT/GTE and LT/LTE explicitly select exclusive/inclusive bounds. Consult the endpoint and property schema before supplying another representation.

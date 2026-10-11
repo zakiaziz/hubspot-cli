@@ -1,44 +1,21 @@
 {
   "name": "@zakiaziz/hubspot-cli",
   "version": "0.1.0",
-  "description": "An agent-friendly command line interface for the HubSpot API.",
+  "description": "Command-line interface for the HubSpot API.",
   "type": "module",
-  "bin": {
-    "hubspot": "./dist/cli.js"
-  },
-  "files": [
-    "dist",
-    "README.md",
-    "LICENSE",
-    "docs"
-  ],
+  "bin": { "hubspot": "./dist/cli.js" },
+  "files": ["dist", "README.md", "LICENSE", "docs"],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "check": "tsc --noEmit",
-    "test": "bun test",
-    "prepack": "bun run build"
+    "build": "bun build src/cli.ts --target=node --outfile dist/cli.js",
+    "check": "bun node_modules/typescript/bin/tsc --noEmit",
+    "prepack": "bun run build",
+    "dev": "bun --watch src/cli.ts"
   },
-  "engines": {
-    "node": ">=22"
-  },
+  "engines": { "node": ">=22" },
   "packageManager": "bun@1.3.11",
-  "keywords": [
-    "hubspot",
-    "crm",
-    "cli",
-    "api"
-  ],
+  "keywords": ["cli", "hubspot"],
   "license": "MIT",
-  "devDependencies": {
-    "@types/bun": "^1.3.11",
-    "@types/node": "^24.0.0",
-    "typescript": "^5.9.0"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/zakiaziz/hubspot-cli.git"
-  },
-  "publishConfig": {
-    "access": "public"
-  }
+  "repository": { "type": "git", "url": "git+https://github.com/zakiaziz/hubspot-cli.git" },
+  "publishConfig": { "access": "public" },
+  "devDependencies": { "@types/node": "^24", "typescript": "^5.8" }
 }

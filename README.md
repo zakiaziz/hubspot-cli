@@ -1,6 +1,6 @@
 # hubspot-cli
 
-Command-line interface for the HubSpot CRM API. It reads and changes CRM records, properties, pipelines, stages, associations, owners, and custom object schemas, and sends raw API requests. It is not an official HubSpot product.
+Command-line interface for the HubSpot CRM API. It reads, searches, and changes CRM records one at a time or in batches, manages properties, pipelines, stages, associations, owners, and custom object schemas, and sends raw API requests. It is not an official HubSpot product.
 
 ## Install
 
@@ -47,6 +47,10 @@ hubspot objects update 12345 --type deals --property amount=1000000 --dry-run
 | hubspot associations create | Create labeled associations between two records. | --from-type OBJECT_TYPE, --from-id RECORD_ID, --to-type OBJECT_TYPE, --to-id RECORD_ID, --file PATH, --query KEY=VALUE, --yes, --dry-run |
 | hubspot associations delete | Delete every association between two records. | --from-type OBJECT_TYPE, --from-id RECORD_ID, --to-type OBJECT_TYPE, --to-id RECORD_ID, --query KEY=VALUE, --yes, --dry-run |
 | hubspot associations create-default | Create the default association between two records. | --from-type OBJECT_TYPE, --from-id RECORD_ID, --to-type OBJECT_TYPE, --to-id RECORD_ID, --query KEY=VALUE, --yes, --dry-run |
+| hubspot associations batch-get | Get the associations of several records. | --from-type OBJECT_TYPE, --to-type OBJECT_TYPE, --file PATH, --query KEY=VALUE |
+| hubspot associations batch-create | Create labeled associations for several record pairs. | --from-type OBJECT_TYPE, --to-type OBJECT_TYPE, --file PATH, --query KEY=VALUE, --yes, --dry-run |
+| hubspot associations batch-create-default | Create default associations for several record pairs. | --from-type OBJECT_TYPE, --to-type OBJECT_TYPE, --file PATH, --query KEY=VALUE, --yes, --dry-run |
+| hubspot associations batch-delete | Delete every association between several record pairs. | --from-type OBJECT_TYPE, --to-type OBJECT_TYPE, --file PATH, --query KEY=VALUE, --yes, --dry-run |
 
 ### objects
 
@@ -54,9 +58,15 @@ hubspot objects update 12345 --type deals --property amount=1000000 --dry-run
 | --- | --- | --- |
 | hubspot objects list | List records of one object type. | --type OBJECT_TYPE, --query KEY=VALUE, --page-size N, --cursor TOKEN, --all, --max-items N |
 | hubspot objects get RECORD_ID | Get one record. | --type OBJECT_TYPE, --query KEY=VALUE |
+| hubspot objects search | Search records of one object type. | --type OBJECT_TYPE, --file PATH, --query KEY=VALUE, --page-size N, --cursor TOKEN, --all, --max-items N |
 | hubspot objects create | Create one record. | --type OBJECT_TYPE, --file PATH, --property NAME=VALUE, --query KEY=VALUE, --yes, --dry-run |
 | hubspot objects update RECORD_ID | Update one record. | --type OBJECT_TYPE, --file PATH, --property NAME=VALUE, --query KEY=VALUE, --yes, --dry-run |
 | hubspot objects archive RECORD_ID | Archive one record. | --type OBJECT_TYPE, --query KEY=VALUE, --yes, --dry-run |
+| hubspot objects batch-get | Get several records by ID. | --type OBJECT_TYPE, --file PATH, --query KEY=VALUE |
+| hubspot objects batch-create | Create several records. | --type OBJECT_TYPE, --file PATH, --query KEY=VALUE, --yes, --dry-run |
+| hubspot objects batch-update | Update several records. | --type OBJECT_TYPE, --file PATH, --query KEY=VALUE, --yes, --dry-run |
+| hubspot objects batch-upsert | Create or update several records by unique property. | --type OBJECT_TYPE, --file PATH, --query KEY=VALUE, --yes, --dry-run |
+| hubspot objects batch-archive | Archive several records. | --type OBJECT_TYPE, --file PATH, --query KEY=VALUE, --yes, --dry-run |
 
 ### owners
 
@@ -231,13 +241,22 @@ Errors print one document on stderr, for example `{"error":{"code":"RATE_LIMITED
 
 IDs are opaque strings. Options accept `--name value` and `--name=value`, and `--` ends options. Unknown commands, options, extra arguments, invalid values, and conflicting options fail with exit code 2 before any request. This tool has no date options. `--query KEY=VALUE` sends exact HubSpot query parameter names, and `--property NAME=VALUE` sets literal string values. An empty `VALUE` sends an empty string that HubSpot can treat as clearing the property, and omitted properties keep their values. `--file PATH` sends the file as the request body, which is HubSpot's documented body for that endpoint. `replace` commands send the complete resource, and `update` commands send only the fields in the file.
 
-Mutations (every `create`, `update`, `replace`, `archive`, and `delete` command, and `api request` with `POST`, `PUT`, `PATCH`, or `DELETE`) need confirmation. The CLI validates arguments first, then resolves credentials (exit 3 when missing), then asks for confirmation. In a terminal, it shows the profile, operation, request, and effect, then prompts. `--yes` confirms without a prompt. With `--no-input`, a non-terminal stdin or stderr, or CI mode, a missing confirmation exits 9. Ctrl-C or end of input at a prompt exits 130 with `INTERRUPTED`. `--dry-run` prints a redacted preview of the request, with headers in the order `Authorization`, `Accept`, `Content-Type`, and sends nothing. It needs no credentials. Preview success does not guarantee that the request succeeds.
+`objects search` and the batch commands take their complete input from `--file PATH` and validate it before any request. A search file holds `query`, `filterGroups`, `sorts`, and `properties`; it must not hold `limit` or `after`, which `--page-size` and `--cursor` set. A batch file holds an `inputs` array of at least one object, and each command checks the fields it needs: `id` for `batch-get` and `batch-archive`, `properties` for `batch-create`, `id` and `properties` for `batch-update` and `batch-upsert`, `from`, `to`, and `types` for `associations batch-create`, `from` and `to` for `associations batch-create-default`, `from` and a `to` array for `associations batch-delete`, and `id` for `associations batch-get`. IDs are nonempty strings. `objects batch-get` also accepts `properties`, `propertiesWithHistory`, and `idProperty`. HubSpot limits one request to 100 inputs for the object batches, 1,000 for `associations batch-get`, and 2,000 for the other association batches, and the tool rejects a larger file with exit 2 before any request. Any other top-level field fails with exit 2. A `types` item of `associations batch-create` needs `associationCategory` (`HUBSPOT_DEFINED`, `USER_DEFINED`, or `INTEGRATOR_DEFINED`) and an integer `associationTypeId`. Each command's `--file` help shows an example body.
+
+```bash
+hubspot objects batch-update --type contacts --file updates.json --dry-run
+hubspot associations batch-get --from-type contacts --to-type companies --file ids.json
+```
+
+A batch sends one request with every input in the file and is not atomic: HubSpot can apply some items and reject others in the same response, and nothing is rolled back. `batch-get` returns the results as `data`, with `status`, `startedAt`, and `completedAt` under `meta.provider`. The batch writes return the same, except `objects batch-archive` and `associations batch-delete`, which return `data: null`. When the response lists item errors, the command exits 8 with `PARTIAL_FAILURE` and prints no `data`. `error.partial.completed` lists the items HubSpot completed, `error.partial.failed` lists each rejected item, named by the ID or trace ID HubSpot reports for it, with an error code mapped from the HubSpot category and the HubSpot message, and `error.partial.not_attempted` is empty. `error.provider` holds the HTTP status and HubSpot correlation ID, and item messages are scrubbed of secret values from the request. Check which items completed before resubmitting a write. Batch commands have no `--all` option: every target is explicit in the file.
+
+Mutations (every `create`, `update`, `replace`, `archive`, `delete`, `create-default`, and `batch-*` write command, and `api request` with `POST`, `PUT`, `PATCH`, or `DELETE`) need confirmation. `objects search`, `objects batch-get`, and `associations batch-get` are reads even though they send `POST`: they need no confirmation and have no `--yes` or `--dry-run`. The CLI validates arguments first, then resolves credentials (exit 3 when missing), then asks for confirmation. In a terminal, it shows the profile, operation, request, and effect, then prompts. `--yes` confirms without a prompt. With `--no-input`, a non-terminal stdin or stderr, or CI mode, a missing confirmation exits 9. Ctrl-C or end of input at a prompt exits 130 with `INTERRUPTED`. `--dry-run` prints a redacted preview of the request, with headers in the order `Authorization`, `Accept`, `Content-Type`, and sends nothing. It needs no credentials. Preview success does not guarantee that the request succeeds.
 
 Reads make up to 3 attempts on HTTP 429, 500, 502, 503, 504, network errors, and timeouts, waiting 250 ms, then 500 ms, or the `Retry-After` value up to 10 seconds. A `Retry-After` above 10 seconds is not waited on: the command fails with `RATE_LIMITED` and `provider.retry_after_seconds`. Mutations make one attempt. `--timeout` applies to each attempt. `--verbose` writes redacted request, response, and retry diagnostics to stderr.
 
 ## Pagination
 
-Paginated commands fetch one page by default. `objects list` accepts `--page-size` up to 100. `owners list` and `associations list` accept up to 500. The default is 100 for all three. The CLI keeps HubSpot's order, which HubSpot does not document, and never sorts. HubSpot cursors (`paging.next.after`) pass through unchanged as strings, and a numeric cursor is read as a decimal string. `--query limit=N` and `--query after=TOKEN` are rejected on these commands; use `--page-size` and `--cursor`.
+Paginated commands fetch one page by default. `objects list` accepts `--page-size` up to 100, and `objects search` up to 200. `owners list` and `associations list` accept up to 500. The default is 100 for all three. The CLI keeps HubSpot's order, which HubSpot does not document, and never sorts. HubSpot cursors (`paging.next.after`) pass through unchanged as strings, and a numeric cursor is read as a decimal string. `--query limit=N` and `--query after=TOKEN` are rejected on these commands; use `--page-size` and `--cursor`. `objects search` sends the page size and cursor in the request body as `limit` and `after`, so its input file must not hold them. The default page size is 100. Its order follows `sorts` in the file, and HubSpot's default search order applies without them. HubSpot serves only the first 10,000 results of one search query. The cursor is a decimal offset below 10,000, and a read that reaches the limit ends with `has_more: true` and `next_cursor: null` because HubSpot offers no way to continue. Narrow the filters to read further. `meta.provider.total` carries the total that HubSpot reports.
 
 `--all` follows every cursor. `--max-items N` (with `--all`) shrinks the last request so the read stops on a page boundary, and `meta.next_cursor` resumes it. `--cursor TOKEN` resumes from a previous `meta.next_cursor`, with or without `--all`.
 
@@ -246,7 +265,7 @@ hubspot objects list --type contacts --all --max-items 500 > contacts.json
 hubspot objects list --type contacts --all --cursor "$(jq -r '.meta.next_cursor' contacts.json)"
 ```
 
-A repeated cursor or an oversized page on the first page fails with `INVALID_RESPONSE` and exit 1. A failure on a later page exits 8 with `PARTIAL_FAILURE`. The items read so far are in `error.partial.data`, `error.partial.next_cursor` points at the first unread item, and `error.details.cause` names the underlying error code, such as `INVALID_RESPONSE`. The property, pipeline, stage, schema, and association label lists are unpaginated: HubSpot returns the full list in one response, and `meta` is empty.
+A repeated cursor or an oversized page on the first page fails with `INVALID_RESPONSE` and exit 1. A failure on a later page exits 8 with `PARTIAL_FAILURE`. The items read so far are in `error.partial.data`, `error.partial.next_cursor` points at the first unread item, and `error.details.cause` names the underlying error code, such as `INVALID_RESPONSE`. The property, pipeline, stage, schema, and association label lists are unpaginated: HubSpot returns the full list in one response, and `meta` is empty. Batch commands take no pagination options: each sends one request with the inputs in its file. A result of `associations batch-get` can hold `paging.next.after` when a record has more associations. The tool does not follow it. Resubmit that record as `{"id":"12345","after":"TOKEN"}` in a new file.
 
 ## Raw API access
 
@@ -280,6 +299,9 @@ Completion scripts come from `hubspot completions bash|zsh|fish` and read only t
 | Rule | Decision | Reason |
 | --- | --- | --- |
 | `CLI-GRAM-4` | `associations create-default` | HubSpot distinguishes the default association from labeled associations. |
+| `CLI-GRAM-4` | `associations batch-create-default` | The batch form of `create-default` keeps the HubSpot term for the default association. |
+| `CLI-GRAM-4` | `objects batch-upsert` | HubSpot calls the operation upsert: it creates or updates a record by a unique property. |
+| `CLI-GRAM-4` | `objects batch-archive`, `associations batch-delete` | The action vocabulary lists only `batch-get`, `batch-create`, and `batch-update`. These two keep the action name of their single-record commands. |
 | `CLI-GRAM-6` | `associations` commands take every ID as an option | An association joins two records and an object type pair, so no single primary target exists. |
 
 ## Development

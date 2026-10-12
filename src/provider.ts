@@ -1,10 +1,8 @@
 import { CliError } from "./core/errors.js";
-import type { PageInfo, Provider, ProviderErrorDetail } from "./core/provider.js";
+import type { Provider, ProviderErrorDetail } from "./core/provider.js";
 import { HTTP_METHODS } from "./core/types.js";
 import { isRecord, visibleAsciiConstraint } from "./core/values.js";
-import { API_VERSION, commands, groups } from "./registry.js";
-
-const MAX_CURSOR_LENGTH = 1024;
+import { API_VERSION, commands, groups, readPage } from "./registry.js";
 
 export const provider: Provider = {
   bin: "hubspot",
@@ -63,27 +61,4 @@ function accountIdentity(payload: unknown): unknown {
   throw new CliError("INVALID_RESPONSE", "HubSpot returned no account details for auth verify.", {
     hint: "Retry later. If the failure persists, the HubSpot API contract may have changed.",
   });
-}
-
-function readPage(payload: Record<string, unknown>, collectionKey: string): PageInfo | undefined {
-  const nextCursor = readCursor(payload.paging);
-  if (nextCursor === undefined) return undefined;
-  const extra = Object.entries(payload).filter(
-    ([field, value]) => ![collectionKey, "paging"].includes(field) && !(field === "errors" && Array.isArray(value) && value.length === 0),
-  );
-  return {
-    nextCursor,
-    ...(extra.length > 0 ? { provider: Object.fromEntries(extra) } : {}),
-  };
-}
-
-/** Returns the next cursor, null when no page remains, or undefined when paging breaks the contract. */
-function readCursor(paging: unknown): string | null | undefined {
-  if (paging === undefined) return null;
-  if (!isRecord(paging)) return undefined;
-  if (paging.next === undefined) return null;
-  const after = isRecord(paging.next) ? paging.next.after : undefined;
-  const cursor = typeof after === "number" && Number.isSafeInteger(after) && after >= 0 ? String(after) : after;
-  if (typeof cursor === "string" && cursor !== "" && cursor.length <= MAX_CURSOR_LENGTH) return cursor;
-  return undefined;
 }

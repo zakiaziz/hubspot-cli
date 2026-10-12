@@ -17,7 +17,7 @@ cd hubspot-cli && bun run build && bun link
 ```bash
 hubspot setup
 # List contacts as a table.
-hubspot objects list --type contacts --page-size 25 --format human
+hubspot objects list --type contacts --page-size 25
 # Get one deal record.
 hubspot objects get 12345 --type deals
 # Preview a deal update without sending it.
@@ -121,7 +121,7 @@ hubspot objects update 12345 --type deals --property amount=1000000 --dry-run
 
 | Command | Description | Options |
 | --- | --- | --- |
-| hubspot setup [NAME] | Create and activate a profile. | --access-token-file PATH, --base-url URL, --api-version API_VERSION, --from-env |
+| hubspot setup [NAME] | Create and activate a profile. | --access-token-file PATH, --base-url URL, --api-version API_VERSION |
 
 ### profiles
 
@@ -140,8 +140,6 @@ hubspot objects update 12345 --type deals --property amount=1000000 --dry-run
 | --- | --- | --- |
 | hubspot config list | List every configuration key. | None |
 | hubspot config get KEY | Get one configuration value. | None |
-| hubspot config set KEY VALUE | Set one configuration value. | None |
-| hubspot config unset KEY | Remove one configuration value. | None |
 | hubspot config path | Get the configuration paths. | None |
 
 ### auth
@@ -169,7 +167,7 @@ hubspot objects update 12345 --type deals --property amount=1000000 --dry-run
 | -h, --help | Show help. Uses no credentials or network. |
 | --version | Print the executable name and version. |
 | --profile NAME | Select a saved profile. |
-| --format FORMAT | Output format. Allowed: json, pretty, human. Default: json. |
+| --format FORMAT | Output format. Allowed: json, pretty, human. Default: human. |
 | --color WHEN | Color for pretty and human output. Allowed: auto, always, never. Default: auto. |
 | -q, --quiet | Suppress progress and notices. Results and errors still print. |
 | -v, --verbose | Print redacted diagnostics to stderr. |
@@ -187,43 +185,40 @@ hubspot setup work --access-token-file ./hubspot-access-token.txt
 hubspot auth verify
 ```
 
-`setup [NAME]` creates a profile (default name: `default`) and makes it the active profile. It fails when the profile exists. If activation fails after the profile is written, the profile stays saved and `setup` exits 8 with `PARTIAL_FAILURE`. In a terminal without `--no-input`, `setup` prompts for a missing access token with hidden input. Secrets are never command-line values: pass `--access-token-file PATH` (`-` reads stdin), set `HUBSPOT_ACCESS_TOKEN`, or enter the token at the prompt. `setup --from-env` copies `HUBSPOT_ACCESS_TOKEN`, `HUBSPOT_BASE_URL`, and `HUBSPOT_API_VERSION` into the profile and cannot be combined with `--access-token-file`, `--base-url`, or `--api-version`.
+`setup [NAME]` creates a profile (default name: `default`) and makes it the active profile. It fails when the profile exists. If activation fails after the profile is written, the profile stays saved and `setup` exits 8 with `PARTIAL_FAILURE`. In a terminal without `--no-input`, `setup` prompts for a missing access token with hidden input. Secrets are never command-line values: pass `--access-token-file PATH` (`-` reads stdin) or enter the token at the prompt.
+
+Credentials and endpoint settings come only from a profile. No environment variable supplies them or selects a profile, so a scheduled job passes `--profile NAME` explicitly. Profile selection is `--profile NAME`, otherwise `activeProfile` in `config.json`. A selected or active profile that does not exist, and no profile at all, fail with `CONFIGURATION_ERROR` and no fallback. The hint points to `hubspot setup NAME` or `hubspot profiles use NAME`.
+
+The CLI reads three environment variables, and none supplies credentials, endpoints, or a profile:
 
 | Variable | Purpose |
 | --- | --- |
-| `HUBSPOT_PROFILE` | Select a saved profile. |
-| `HUBSPOT_ACCESS_TOKEN` | HubSpot private app access token (bearer token). |
-| `HUBSPOT_BASE_URL` | API base URL. Default: `https://api.hubapi.com`. |
-| `HUBSPOT_API_VERSION` | API version of first-class commands, as `YYYY-MM`. Default: `2026-03`. |
 | `XDG_CONFIG_HOME` | Configuration root when it is an absolute path. Otherwise `~/.config`. |
 | `NO_COLOR` | Disables color with `--color auto` when set and nonempty. |
 | `CI` | Disables prompts when nonempty and not `0` or `false`. |
 
-A `HUBSPOT_` variable that is set but empty, a malformed `HUBSPOT_PROFILE`, and an invalid `HUBSPOT_BASE_URL` or `HUBSPOT_API_VERSION` fail with `CONFIGURATION_ERROR` and name the variable. None of them falls through to the next source.
+Stored in the profile:
 
-Precedence:
-
-1. Profile selection: `--profile`, `HUBSPOT_PROFILE`, then `activeProfile` in `config.json`. A selected or active profile that does not exist fails with `CONFIGURATION_ERROR`, with no fallback.
-2. Credentials: `HUBSPOT_ACCESS_TOKEN`, then the selected profile.
-3. Base URL: `HUBSPOT_BASE_URL`, the selected profile, `baseUrl` in `config.json`, then the default.
-4. API version: `HUBSPOT_API_VERSION`, the selected profile, `apiVersion` in `config.json`, then the default.
+- Base URL: `baseUrl` in the profile, then `https://api.hubapi.com`.
+- API version: `apiVersion` in the profile, then `2026-03`.
 
 `hubspot auth verify` sends `GET /account-info/VERSION/details`, where `VERSION` is the configured API version (default `2026-03`). Success proves that HubSpot accepted the access token for that request and returns the account details as `identity`. It does not prove complete permission coverage. The tool does not refresh OAuth tokens.
 
 ## Output and errors
 
-The default output format is `json`: one compact, uncolored line on stdout with the envelope `{"data":...,"meta":{...}}`. `--format pretty` prints the same document indented, with syntax highlighting when color applies. `--format human` prints tables for collections and labeled fields for one resource. Errors go to stderr in the selected format. Help, `--version`, and `completions` print plain text.
+The default output format is `human`: tables for collections and labeled fields for one resource, whatever the terminal. Nested objects and arrays inside one resource print as indented fields and lists, and a table cell shows a short summary such as a name or `N items`, never raw JSON. A dry run prints `dry_run` and `validation`, then each request on its own lines. `--format json` prints one compact, uncolored line on stdout with the envelope `{"data":...,"meta":{...}}`, and scripts and agents pass it explicitly. `--format pretty` prints the same document indented, with syntax highlighting when color applies. With `--format pretty` or the default `human` format and stderr on a terminal, a command that sends a request first prints one gray line, `Profile: NAME`, to stderr. `--quiet` suppresses it, and `--format json` never prints it. Errors go to stderr in the selected format, so the default error is the `human` text. Help, `--version`, and `completions` print plain text. The bare command and a command group with no action print the same help as `--help` on stdout, exit 0; an unknown action fails with exit 2.
 
 `data` is an object for one resource, an array for a collection, or `null` when HubSpot returns no content, and keeps HubSpot's field names. `meta` is always present.
 
 | `meta` key | When |
 | --- | --- |
+| `profile` | Every command that sends a request. The name of the profile that served it. |
 | `next_cursor` | Paginated collection reads. A string, or `null` when no page remains. |
 | `has_more` | Paginated collection reads. |
 | `provider` | Other collection fields that HubSpot returns, such as `total`. |
 | `dry_run`, `validation` | Dry-run previews. `validation` is `local`. |
 
-Errors print one document on stderr, for example `{"error":{"code":"RATE_LIMITED","message":"...","hint":"...","retryable":true,"provider":{"status":429}}}`. Optional keys are `hint`, `outcome` (`unknown` when a mutation may have applied), `provider` (`status`, `code`, `request_id`, `retry_after_seconds`), `details`, and `partial`. `--format human` prints `Error [CODE]: message` and `Hint: ...`.
+With `--format json`, errors print one compact document on stderr, for example `{"error":{"code":"RATE_LIMITED","message":"...","hint":"...","retryable":true,"provider":{"status":429}}}`. Optional keys are `hint`, `outcome` (`unknown` when a mutation may have applied), `provider` (`status`, `code`, `request_id`, `retry_after_seconds`), `details`, and `partial`. The default `human` format prints `Error [CODE]: message` and `Hint: ...`.
 
 | Exit | Error codes |
 | --- | --- |
@@ -250,7 +245,7 @@ hubspot associations batch-get --from-type contacts --to-type companies --file i
 
 A batch sends one request with every input in the file and is not atomic: HubSpot can apply some items and reject others in the same response, and nothing is rolled back. `batch-get` returns the results as `data`, with `status`, `startedAt`, and `completedAt` under `meta.provider`. The batch writes return the same, except `objects batch-archive` and `associations batch-delete`, which return `data: null`. When the response lists item errors, the command exits 8 with `PARTIAL_FAILURE` and prints no `data`. `error.partial.completed` lists the items HubSpot completed, `error.partial.failed` lists each rejected item, named by the ID or trace ID HubSpot reports for it, with an error code mapped from the HubSpot category and the HubSpot message, and `error.partial.not_attempted` is empty. `error.provider` holds the HTTP status and HubSpot correlation ID, and item messages are scrubbed of secret values from the request. Check which items completed before resubmitting a write. Batch commands have no `--all` option: every target is explicit in the file.
 
-Mutations (every `create`, `update`, `replace`, `archive`, `delete`, `create-default`, and `batch-*` write command, and `api request` with `POST`, `PUT`, `PATCH`, or `DELETE`) need confirmation. `objects search`, `objects batch-get`, and `associations batch-get` are reads even though they send `POST`: they need no confirmation and have no `--yes` or `--dry-run`. The CLI validates arguments first, then resolves credentials (exit 3 when missing), then asks for confirmation. In a terminal, it shows the profile, operation, request, and effect, then prompts. `--yes` confirms without a prompt. With `--no-input`, a non-terminal stdin or stderr, or CI mode, a missing confirmation exits 9. Ctrl-C or end of input at a prompt exits 130 with `INTERRUPTED`. `--dry-run` prints a redacted preview of the request, with headers in the order `Authorization`, `Accept`, `Content-Type`, and sends nothing. It needs no credentials. Preview success does not guarantee that the request succeeds.
+Mutations (every `create`, `update`, `replace`, `archive`, `delete`, `create-default`, and `batch-*` write command, and `api request` with `POST`, `PUT`, `PATCH`, or `DELETE`) need confirmation. `objects search`, `objects batch-get`, and `associations batch-get` are reads even though they send `POST`: they need no confirmation and have no `--yes` or `--dry-run`. The CLI validates arguments first, then resolves credentials (exit 3 when missing), then asks for confirmation. In a terminal, it shows the profile, operation, request, and effect, then prompts. `--yes` confirms without a prompt. With `--no-input`, a non-terminal stdin or stderr, or CI mode, a missing confirmation exits 9. Ctrl-C or end of input at a prompt exits 130 with `INTERRUPTED`. `--dry-run` prints a redacted preview of the request, with headers in the order `Authorization`, `Accept`, `Content-Type`, and sends nothing. It needs a profile but no stored credentials. Preview success does not guarantee that the request succeeds.
 
 Reads make up to 3 attempts on HTTP 429, 500, 502, 503, 504, network errors, and timeouts, waiting 250 ms, then 500 ms, or the `Retry-After` value up to 10 seconds. A `Retry-After` above 10 seconds is not waited on: the command fails with `RATE_LIMITED` and `provider.retry_after_seconds`. Mutations make one attempt. `--timeout` applies to each attempt. `--verbose` writes redacted request, response, and retry diagnostics to stderr.
 
@@ -261,11 +256,11 @@ Paginated commands fetch one page by default. `objects list` accepts `--page-siz
 `--all` follows every cursor. `--max-items N` (with `--all`) shrinks the last request so the read stops on a page boundary, and `meta.next_cursor` resumes it. `--cursor TOKEN` resumes from a previous `meta.next_cursor`, with or without `--all`.
 
 ```bash
-hubspot objects list --type contacts --all --max-items 500 > contacts.json
-hubspot objects list --type contacts --all --cursor "$(jq -r '.meta.next_cursor' contacts.json)"
+hubspot objects list --type contacts --all --max-items 500 --format json > contacts.json
+hubspot objects list --type contacts --all --cursor "$(jq -r '.meta.next_cursor' contacts.json)" --format json
 ```
 
-A repeated cursor or an oversized page on the first page fails with `INVALID_RESPONSE` and exit 1. A failure on a later page exits 8 with `PARTIAL_FAILURE`. The items read so far are in `error.partial.data`, `error.partial.next_cursor` points at the first unread item, and `error.details.cause` names the underlying error code, such as `INVALID_RESPONSE`. The property, pipeline, stage, schema, and association label lists are unpaginated: HubSpot returns the full list in one response, and `meta` is empty. Batch commands take no pagination options: each sends one request with the inputs in its file. A result of `associations batch-get` can hold `paging.next.after` when a record has more associations. The tool does not follow it. Resubmit that record as `{"id":"12345","after":"TOKEN"}` in a new file.
+A repeated cursor or an oversized page on the first page fails with `INVALID_RESPONSE` and exit 1. A failure on a later page exits 8 with `PARTIAL_FAILURE`. The items read so far are in `error.partial.data`, `error.partial.next_cursor` points at the first unread item, and `error.details.cause` names the underlying error code, such as `INVALID_RESPONSE`. The property, pipeline, stage, schema, and association label lists are unpaginated: HubSpot returns the full list in one response, and `meta` has only `profile`. Batch commands take no pagination options: each sends one request with the inputs in its file. A result of `associations batch-get` can hold `paging.next.after` when a record has more associations. The tool does not follow it. Resubmit that record as `{"id":"12345","after":"TOKEN"}` in a new file.
 
 ## Raw API access
 
@@ -282,15 +277,15 @@ Files live in `$XDG_CONFIG_HOME/hubspot` when `XDG_CONFIG_HOME` is an absolute p
 
 ```text
 hubspot/
-  config.json            {"activeProfile": "work", "baseUrl": "https://...", "apiVersion": "2026-03"}
+  config.json            {"activeProfile": "work"}
   profiles/NAME.json     {"accessToken": "...", "baseUrl": "https://...", "apiVersion": "2026-03"}
 ```
 
-Keys are camelCase. Files use mode `0600`, directories use mode `0700`, and writes are atomic: the CLI creates a temporary file exclusively with mode `0600` in the same directory, then renames it. Reads reject unknown keys and non-object JSON with `CONFIGURATION_ERROR`. Profile names match `^[A-Za-z0-9._-]+$` and are not `.` or `..`. `config.json` keys: `activeProfile` (read-only through `config`; change it with `profiles use`), `baseUrl`, and `apiVersion`. Profile fields: `accessToken`, `baseUrl`, and `apiVersion`. Secrets are redacted in previews, diagnostics, `profiles get`, and `config list`.
+Keys are camelCase. Files use mode `0600`, directories use mode `0700`, and writes are atomic: the CLI creates a temporary file exclusively with mode `0600` in the same directory, then renames it. Reads reject unknown keys and non-object JSON with `CONFIGURATION_ERROR`. Profile names match `^[A-Za-z0-9._-]+$` and are not `.` or `..`. `config.json` holds one key, `activeProfile` (read-only through `config`; change it with `profiles use`). Credentials and endpoint settings live only in profile files, and a `config.json` with any other key fails with `CONFIGURATION_ERROR`. Profile fields: `accessToken`, `baseUrl`, and `apiVersion`. Secrets are redacted in previews, diagnostics, `profiles get`, and `config list`.
 
-An API version, from `--api-version`, `config set apiVersion`, `HUBSPOT_API_VERSION`, or a stored file, matches `YYYY-MM`.
+An API version, from `--api-version` or a stored file, matches `YYYY-MM`.
 
-A base URL, from `--base-url`, `config set baseUrl`, `HUBSPOT_BASE_URL`, or a stored file, must be an `https` URL (`http` only for `localhost`, `127.0.0.1`, or `::1`) with no credentials, query string, fragment, or path. Values are stored unchanged, and requests go to the URL's origin.
+A base URL, from `--base-url` or a stored file, must be an `https` URL (`http` only for `localhost`, `127.0.0.1`, or `::1`) with no credentials, query string, fragment, or path. Values are stored unchanged, and requests go to the URL's origin.
 
 Completion scripts come from `hubspot completions bash|zsh|fish` and read only the command registry and local profile names. They complete commands, options, enum values (after `--OPT ` and `--OPT=`), `METHOD`, `SHELL`, and profile names (after `--profile` and for the `NAME` argument of `profiles get|update|delete|use`). They offer nothing after `--` or after an option that takes a free-form value.
 

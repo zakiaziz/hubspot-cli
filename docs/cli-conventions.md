@@ -92,7 +92,7 @@ hubspot account usage get
 | --help, -h | Local help; no credentials or network. |
 | --version | Executable name and version as text. |
 | --profile NAME | Select a saved configuration. |
-| --format json\|pretty\|human | Default json: compact and uncolored. Pretty: indented JSON with syntax highlighting. Human: tables or labeled fields. |
+| --format json\|pretty\|human | Default human: tables or labeled fields. Json: compact and uncolored, for agents and scripts. Pretty: indented JSON with syntax highlighting. |
 | --quiet, -q | Suppress progress and notices, preserving results and errors. |
 | --verbose, -v | Redacted diagnostics on stderr. |
 | --no-input | Never prompt; fail for missing required input. |
@@ -116,15 +116,20 @@ Additional presentation formats such as markdown require explicit command suppor
 
 - `CLI-CFG-1` MUST use these names for supported capabilities:
   profiles list|get|create|update|delete|use; auth verify;
-  config get|set|unset|list|path; completions bash|zsh|fish;
+  config get|list|path; completions bash|zsh|fish;
   api request METHOD PATH.
 - `CLI-CFG-2` MUST implement setup through the same profile/config operations
   as explicit commands. Setup may create and activate a profile.
-- `CLI-CFG-3` MUST document precedence: explicit options, tool-prefixed
-  environment variables, selected profile, then documented defaults.
-  An explicitly requested missing profile fails without account fallback.
-- `CLI-CFG-4` SHOULD accept secrets through environment variables, protected
-  files, or hidden prompts instead of command-line values. MUST redact secrets
+- `CLI-CFG-3` MUST read credentials and endpoint settings only from a profile.
+  The profile is the one named by `--profile`, otherwise `activeProfile` in
+  `config.json`. No environment variable supplies or selects credentials,
+  endpoints, or profiles; scheduled jobs pass `--profile` explicitly. A missing
+  requested or active profile fails without fallback. The profile stores
+  whatever authenticates the tool (API key, token, cookie, email plus token),
+  and each tool supports one authentication scheme.
+- `CLI-CFG-4` MUST fill profile secrets through a hidden prompt (interactive)
+  or `--<secret>-file PATH` (non-interactive, `-` reads stdin), never a
+  command-line value. MUST redact secrets
   in diagnostics, previews, and configuration inspection. Declare intentional
   secret output, such as a newly created webhook signing secret.
 - `CLI-CFG-5` MUST keep configuration in a directory named after the
@@ -140,8 +145,10 @@ Additional presentation formats such as markdown require explicit command suppor
 - `CLI-HELP-1` MUST provide --help at every command level: purpose, usage,
   types, defaults, allowed values, examples, output, pagination, side effects,
   and relevant failures.
-- `CLI-HELP-2` MUST show concise help and exit 0 for no command. Incomplete
-  operations fail with exit 2 and focused usage.
+- `CLI-HELP-2` MUST show help on stdout and exit 0 for no command and for a
+  command group without an action: the root or group help, exactly as --help
+  prints it. A leaf command with missing or invalid input fails with exit 2
+  and focused usage.
 - `CLI-HELP-3` MUST derive help and completions from the same command
   definitions. Completion commands print scripts, not edit shell files.
 - `CLI-HELP-4` SHOULD support Bash, Zsh, and Fish completion for commands,
@@ -150,11 +157,12 @@ Additional presentation formats such as markdown require explicit command suppor
 
 ## Output
 
-- `CLI-OUT-1` MUST default operational commands to --format json regardless of
-  terminal detection: compact JSON on one line, with no indentation, syntax
+- `CLI-OUT-1` MUST default operational commands to --format human regardless
+  of terminal detection, for the person at the keyboard. Agents and scripts
+  pass --format json: compact JSON on one line, with no indentation, syntax
   highlighting, or extra whitespace outside string values, followed by one
-  newline. This is the default for LLMs and scripts. Help, version, and
-  completion retain documented text outputs.
+  newline. --format pretty is indented, colorized JSON for debugging. Help,
+  version, and completion retain documented text outputs.
 - `CLI-OUT-2` MUST send results to stdout and progress, warnings, prompts,
   diagnostics, and errors to stderr. Structured results contain no surrounding
   prose. --format json never contains ANSI escape sequences, even with
@@ -163,7 +171,8 @@ Additional presentation formats such as markdown require explicit command suppor
   First-class commands use a data/meta envelope. data is an object for one
   resource, an array for collections, or null for no returned resource.
 - `CLI-OUT-4` MUST preserve provider field names within data. Paginated meta
-  includes next_cursor and has_more where supported. Never claim completeness
+  includes next_cursor and has_more where supported. Every network command's
+  meta includes profile, the name of the profile that supplied credentials. Never claim completeness
   for truncated or provider-capped results.
 - `CLI-OUT-5` MUST preserve provider JSON shape for raw api request output.
   Represent non-JSON text as a JSON string and an empty body as null.
@@ -187,14 +196,15 @@ Additional presentation formats such as markdown require explicit command suppor
   explicit --color always enables it, including when redirected or NO_COLOR
   is set. ANSI-colored pretty output is presentation, not parseable JSON;
   --format json always remains parseable and uncolored.
-- `CLI-OUT-9` MUST support --format human as an explicit alternative to JSON
-  presentation. Do not switch formats automatically based on terminal detection.
+- `CLI-OUT-9` MUST use --format human as the default presentation and support
+  --format json and pretty explicitly. Do not switch formats automatically
+  based on terminal detection.
 
 ~~~bash
-hubspot objects list --type contacts                            # Compact, uncolored JSON.
-hubspot objects list --type contacts --format pretty            # Indented JSON; highlighted in a terminal.
+hubspot objects list --type contacts                  # Human-readable table (default).
+hubspot objects list --type contacts --format json    # Compact, uncolored JSON.
+hubspot objects list --type contacts --format pretty  # Indented JSON; highlighted in a terminal.
 hubspot objects list --type contacts --format pretty --color never
-hubspot objects list --type contacts --format human             # Human-readable table.
 ~~~
 
 ## Errors and exit codes
@@ -408,7 +418,7 @@ exceptions: []
 
 ## References
 
-The numbered rules define this tool's contract. JSON defaults, the envelope, and
+The numbered rules define this tool's contract. The human default, the JSON envelope, and
 exit-code assignments are deliberate choices, not universal Unix requirements.
 
 - [Command Line Interface Guidelines](https://clig.dev/)
@@ -422,7 +432,7 @@ exit-code assignments are deliberate choices, not universal Unix requirements.
 - Input: `--file PATH` reads the complete JSON input, and `-` reads stdin (`CLI-IN-3`). The tool never expands `@filename`. `--file` conflicts with `--property` (`CLI-IN-4`). `--property NAME=VALUE` (`objects create` and `update`) is repeatable and sets literal string values, including an explicit empty string. HubSpot can treat an empty string as clearing the property (`CLI-IN-6`); omitted properties keep their values. `--query KEY=VALUE` is repeatable and sends exact HubSpot query parameter names. Paginated commands reject `limit` and `after`; use `--page-size` and `--cursor`. `objects search` and the batch commands take their complete input from `--file` (`CLI-IN-8`): the body must be a JSON object that holds only the documented top-level fields, a batch body needs a nonempty `inputs` array whose items hold the fields that command requires, and IDs are nonempty strings. A search body must not hold `limit` or `after`. A file larger than HubSpot's per-request limit (100 inputs for object batches, 1,000 for `associations batch-get`, 2,000 for the other association batches) fails before any request.
 - Dates: this tool has no date options. Query parameters and request bodies keep HubSpot's provider contract (`CLI-IN-7`).
 - Updates: `objects update`, `objects batch-update`, `properties update`, `pipelines update`, `stages update`, and `schemas update` preserve omitted fields.
-- API version: first-class commands use the HubSpot API version from `HUBSPOT_API_VERSION`, the selected profile, or `config.json`, and `2026-03` when none is set. `--api-version` only stores the value in a profile on `setup` and `profiles create|update`. The version is an endpoint field, so it appears on `setup` and `profiles`, as an environment variable, and as a config key.
+- API version: first-class commands use the HubSpot API version from the selected profile, and `2026-03` when the profile sets none. `--api-version` only stores the value in a profile on `setup` and `profiles create|update`. The version is an endpoint field, so it appears on `setup` and `profiles` and is stored in the profile.
 - Cursors: HubSpot `paging.next.after` values pass through unchanged as strings. A numeric `after` is read as a decimal string.
 - Partial results: a repeated cursor or an oversized page on the first page is `INVALID_RESPONSE`. On a later page, the error is `PARTIAL_FAILURE` with `details.cause` set to `INVALID_RESPONSE` and `partial` holding the completed pages. Every first-class mutation sends one request; the tool starts no asynchronous jobs (`CLI-SAFE-8`). Single-record mutations are atomic from the CLI's point of view, but batch commands are not (`CLI-SAFE-7`): HubSpot can apply some items and reject others in one response, and nothing is rolled back.
 - Secret handling: the access token is replaced with `[redacted]` in HubSpot messages, codes, and request IDs before anything prints. Base URL and `PATH` errors echo the received value with only URL credentials redacted.

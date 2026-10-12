@@ -13,7 +13,7 @@ const BIN = "hubspot";
 const ASSOCIATION_CATEGORIES = ["HUBSPOT_DEFINED", "USER_DEFINED", "INTEGRATOR_DEFINED"];
 const BATCH_META = ["status", "startedAt", "completedAt"];
 const PROVIDER_ORDER = "Order is set by HubSpot and is undocumented.";
-const UNPAGINATED = "Not paginated. HubSpot returns the full list in one response; meta is empty.";
+const UNPAGINATED = "Not paginated. HubSpot returns the full list in one response; meta has profile.";
 const NO_RESTORE = "HubSpot documents no way to restore it.";
 const GRAM_6_ASSOCIATIONS = "An association joins two records and an object type pair, so no single primary target exists.";
 const GRAM_4_DEFAULT = "create-default preserves the HubSpot term for the default association.";
@@ -645,7 +645,8 @@ const DEFINITIONS: Definition[] = [
     summary: "Get private-app daily API usage.",
     method: "GET",
     route: `/account-info/${V}/api-usage/daily/private-apps`,
-    returns: "the daily API usage",
+    returns: "daily API usage entries",
+    page: "none",
   },
 ];
 
@@ -731,19 +732,19 @@ function fileOption(definition: Definition): OptionSpec {
 
 function outputText(definition: Definition): string {
   const { page, returns } = definition;
-  if (page === "none") return `Collection envelope. data is the array of ${returns}; meta is empty.`;
+  if (page === "none") return `Collection envelope. data is the array of ${returns}; meta has profile.`;
   if (page !== undefined) {
-    return `Collection envelope. data is the array of ${returns}; meta holds next_cursor and has_more, and provider when HubSpot returns extra collection fields.`;
+    return `Collection envelope. data is the array of ${returns}; meta holds profile, next_cursor, and has_more, and provider when HubSpot returns extra collection fields.`;
   }
   const partial = "A response that lists item errors fails with PARTIAL_FAILURE; error.partial holds the completed and failed items.";
   if (returns === "no content") {
-    const none = "Resource envelope. data is null because HubSpot returns no content; meta is empty.";
+    const none = "Resource envelope. data is null because HubSpot returns no content; meta has profile.";
     return definition.batch ? `${none} ${partial}` : none;
   }
   if (definition.batch) {
-    return `Collection envelope. data is the array of ${returns}; meta.provider holds status, startedAt, and completedAt when HubSpot returns them. ${partial}`;
+    return `Collection envelope. data is the array of ${returns}; meta has profile, and meta.provider holds status, startedAt, and completedAt when HubSpot returns them. ${partial}`;
   }
-  return `Resource envelope. data is ${returns}; meta is empty.`;
+  return `Resource envelope. data is ${returns}; meta has profile.`;
 }
 
 function exampleCommands(definition: Definition, paginated: boolean): string[] {
@@ -756,8 +757,8 @@ function exampleCommands(definition: Definition, paginated: boolean): string[] {
   }[definition.input ?? "none"];
   const base = [BIN, ...definition.path, ...positional, ...scoped].join(" ") + input;
   if (definition.effect !== undefined) return [`${base} --dry-run`, `${base} --yes`];
-  if (paginated) return [base, `${base} --all --max-items 200 --format human`];
-  return [base, `${base} --format human`];
+  if (paginated) return [base, `${base} --all --max-items 200 --format json`];
+  return [base, `${base} --format json`];
 }
 
 function sampleOf(definition: Definition, name: string): string | undefined {
